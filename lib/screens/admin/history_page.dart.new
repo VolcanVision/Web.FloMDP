@@ -1,0 +1,366 @@
+import '../../models/order_item.dart';
+import '../../services/orders_service.dart';
+import 'package:flutter/material.dart';
+import '../../models/order_history.dart';
+import '../../models/advance_payment.dart';
+import '../../services/shipment_service.dart';
+import '../../services/advance_payments_service.dart';
+import '../../widgets/back_to_dashboard.dart';
+import '../../widgets/wire_card.dart';
+
+class HistoryPage extends StatefulWidget {
+  const HistoryPage({super.key});
+
+  @override
+  State<HistoryPage> createState() => _HistoryPageState();
+}
+
+class _HistoryPageState extends State<HistoryPage> {
+  List<OrderHistory> _historyOrders = [];
+  bool _isLoading = true;
+  final ShipmentService _shipmentService = ShipmentService();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    setState(() => _isLoading = true);
+    try {
+      final history = await _shipmentService.getOrderHistory();
+      setState(() {
+        _historyOrders = history.take(30).toList();
+        _isLoading = false;
+      });
+
+      if (_historyOrders.isEmpty && _shipmentService.lastError != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Database issue: ${_shipmentService.lastError}\n\nPlease run the SQL script from RUN_THIS_SQL_NOW.md',
+              ),
+              duration: const Duration(seconds: 10),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading history: $e\n\nMake sure you ran the SQL script!'),
+            duration: const Duration(seconds: 8),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showOrderDetails(OrderHistory order) {
+    showDialog(
+      context: context,
+      builder: (context) => FutureBuilder<List<AdvancePayment>>(
+        future: order.id != null
+            ? AdvancePaymentsService.instance.getPaymentsForOrder(order.id!)
+            : Future.value([]),
+        builder: (context, snapshot) {
+          final advances = snapshot.data ?? [];
+          final totalAdvancePaid = advances.fold<double>(0.0, (sum, p) => sum + p.amount);
+
+          String formatDateString(String? iso) {
+            if (iso == null) return 'N/A';
+            try {
+              final dt = DateTime.tryParse(iso);
+              if (dt == null) return iso;
+              return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year}';
+            } catch (_) {
+              return iso;
+            }
+          }
+
+          final finalDateText = advances.isNotEmpty ? advances.first.paidAt : (order.finalPaymentDate ?? 'N/A');
+          final bool isComputedFinal = advances.isEmpty && order.afterDispatchDays > 0 && (order.dispatchDate != null && order.dispatchDate!.isNotEmpty);
+
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 760, maxHeight: MediaQuery.of(context).size.height * 0.85),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // header
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [Colors.blue.shade800, Colors.blue.shade600], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Expanded(child: Text('Order Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16))),
+                        IconButton(onPressed: () => Navigator.of(context).pop(), icon: const Icon(Icons.close, color: Colors.white)),
+                      ],
+                    ),
+                  ),
+
+                  // body
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(child: _buildDetailRow('Order No.', order.orderNumber ?? 'N/A')),
+                              const SizedBox(width: 12),
+                              Expanded(child: _buildDetailRow('Client', order.clientName ?? 'N/A')),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+
+                          FutureBuilder<List<OrderItem>>(
+                            future: order.id != null ? OrdersService.instance.getOrderItemsForOrder(order.id!) : Future.value([]),
+                            builder: (context, snap) {
+                              if (snap.connectionState == ConnectionState.waiting) return const Text('Loading products...');
+                              final items = snap.data ?? [];
+                              if (items.isEmpty) return _buildDetailRow('Products', 'None');
+
+                              final lines = items.map((i) => '${i.productName} (Qty: ${i.quantity})').join('\n');
+                              return _buildDetailRow('Products', lines);
+                            },
+                          ),
+
+                          const SizedBox(height: 8),
+                          Row(children: [Expanded(child: _buildDetailRow('Due Date', formatDateString(order.dueDate))), const SizedBox(width: 12), Expanded(child: _buildDetailRow('Dispatch Date', formatDateString(order.dispatchDate)))]),
+                          const SizedBox(height: 8),
+                          _buildDetailRow('Total Amount', '\u20b9${order.totalAmount.toStringAsFixed(2)}'),
+                          const SizedBox(height: 12),
+
+                          const Divider(height: 16, thickness: 1),
+                          Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text('Installments:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.blue[700]))),
+
+                          if (snapshot.connectionState == ConnectionState.waiting)
+                            Center(child: Padding(padding: const EdgeInsets.all(8), child: CircularProgressIndicator()))
+                          else if (advances.isEmpty)
+                            Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text('No installments recorded', style: TextStyle(color: Colors.grey[600], fontStyle: FontStyle.italic)))
+                          else
+                            ...advances.map((payment) => Card(
+                                  color: Colors.green[50],
+                                  margin: const EdgeInsets.only(bottom: 8),
+                                  child: ListTile(
+                                    title: Text('\$${payment.amount.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green[800])),
+                                    subtitle: payment.note != null && payment.note!.isNotEmpty ? Text(payment.note!, style: TextStyle(fontSize: 12)) : null,
+                                    trailing: Text(formatDateString(payment.paidAt), style: TextStyle(color: Colors.grey[700])),
+                                  ),
+                                )),
+
+                          if (advances.isNotEmpty) _buildDetailRow('Total Installments', '\$${totalAdvancePaid.toStringAsFixed(2)}', color: Colors.green[700], isBold: true),
+
+                          const Divider(height: 16, thickness: 1),
+                          Row(
+                            children: [
+                              Expanded(child: _buildDetailRow('Final Installment Date', formatDateString(finalDateText), color: advances.isNotEmpty ? Colors.green[700] : null)),
+                              if (isComputedFinal)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 8.0),
+                                  child: Chip(label: const Text('Computed', style: TextStyle(color: Colors.white, fontSize: 12)), backgroundColor: Colors.blue.shade700),
+                                ),
+                            ],
+                          ),
+
+                          _buildDetailRow('Days After Dispatch', '${order.afterDispatchDays}'),
+                          const Divider(height: 24, thickness: 2),
+                          _buildDetailRow('Batch No.', order.batchNo ?? 'N/A', isBold: true),
+                          _buildDetailRow('Batch Details', order.batchDetails ?? 'N/A'),
+                          const Divider(height: 24, thickness: 2),
+                          _buildDetailRow('Payment Due Date', order.paymentDueDate ?? 'N/A', color: Colors.orange[800]),
+                          _buildDetailRow('Pending Amount', '\$${order.pendingAmount.toStringAsFixed(2)}', color: order.pendingAmount > 0 ? Colors.red[700] : Colors.green[700], isBold: true),
+                          _buildDetailRow('Shipped At', formatDateString(order.shippedAt)),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // actions
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Close')),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(
+    String label,
+    String value, {
+    Color? color,
+    bool isBold = false,
+    int? maxLines,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 160,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: color ?? Colors.black87,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              ),
+              maxLines: maxLines,
+              overflow: maxLines != null ? TextOverflow.ellipsis : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Order History'),
+        leading: BackToDashboardButton(),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _historyOrders.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.history, size: 64, color: Colors.grey[400]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No shipped orders yet',
+                        style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadHistory,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _historyOrders.length,
+                    itemBuilder: (context, index) {
+                      final order = _historyOrders[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildHistoryCard(order),
+                      );
+                    },
+                  ),
+                ),
+    );
+  }
+
+  Widget _buildHistoryCard(OrderHistory order) {
+    final isPending = order.pendingAmount > 0;
+
+    return WireCard(
+      title: order.orderNumber ?? 'Order #${order.id}',
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    order.clientName ?? 'N/A',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isPending ? Colors.orange[100] : Colors.green[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                isPending ? 'Payment Pending' : 'Paid',
+                style: TextStyle(
+                  color: isPending ? Colors.orange[900] : Colors.green[900],
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton(
+              onPressed: () => _showOrderDetails(order),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo),
+              child: const Text('View Details', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoChip(IconData icon, String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
