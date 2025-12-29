@@ -114,7 +114,7 @@ class _ProductionPageState extends State<ProductionPage> {
     }
   }
 
-  Future<void> _updateBatchStatus(String batchId, String newStatus) async {
+  Future<void> _updateBatchStatus(String batchId, String newStatus, {double? progress}) async {
     int index = productionBatches.indexWhere((batch) => batch.id == batchId);
     if (index == -1) return;
 
@@ -139,19 +139,19 @@ class _ProductionPageState extends State<ProductionPage> {
       _moveQueueItemToEnd(batch.inventoryId);
     }
 
-    final progress =
+    final finalProgress = progress ?? (
         newStatus == 'completed'
             ? 100.0
             : newStatus == 'in_progress'
             ? 50.0
-            : 0.0;
+            : batch.progress);
 
     // Update in database
     final service = SupabaseService();
     await service.updateProductionBatchStatus(
       batchId,
       newStatus,
-      progress: progress,
+      progress: finalProgress,
     );
 
     // Update local state
@@ -161,7 +161,7 @@ class _ProductionPageState extends State<ProductionPage> {
         batchNumber: batch.batchNumber,
         inventoryId: batch.inventoryId,
         status: newStatus,
-        progress: progress,
+        progress: finalProgress,
         createdAt: batch.createdAt,
         updatedAt: DateTime.now(),
       );
@@ -579,12 +579,72 @@ class _ProductionPageState extends State<ProductionPage> {
     );
   }
 
+  void _showPauseDialog(ProductionQueue batch, ProductionQueueItem queueItem) {
+    final TextEditingController unitsController = TextEditingController();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Pause Production'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Batch: ${batch.batchNumber}'),
+            Text('Product: ${queueItem.productName}'),
+            Text('Total Quantity: ${queueItem.quantity} units'),
+            SizedBox(height: 16),
+            TextField(
+              controller: unitsController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Total units processed so far',
+                border: OutlineInputBorder(),
+                hintText: 'e.g. 50',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final processed = double.tryParse(unitsController.text) ?? 0.0;
+              final total = queueItem.quantity.toDouble();
+              
+              if (total > 0) {
+                // Calculate progress based on units entered
+                final calculatedProgress = (processed / total * 100).clamp(0.0, 100.0);
+                
+                _updateBatchStatus(batch.id, 'paused', progress: calculatedProgress);
+                Navigator.pop(context);
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Production paused at ${calculatedProgress.toInt()}% (${processed.toInt()} units)'),
+                    backgroundColor: Colors.orange[700],
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange[700],
+              foregroundColor: Colors.white,
+            ),
+            child: Text('Confirm Pause'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showMoveToInventoryDialog(
     ProductionQueue batch,
     ProductionQueueItem queueItem,
   ) {
-    final tagController = TextEditingController();
-
     showDialog(
       context: context,
       builder:
@@ -622,33 +682,10 @@ class _ProductionPageState extends State<ProductionPage> {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'Batch: ${_displayBatchNumberFor(batch)}',
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
                     'Quantity: ${queueItem.quantity} units',
                     style: TextStyle(fontSize: 14, color: Colors.grey[600]),
                   ),
                   SizedBox(height: 24),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[300]!),
-                    ),
-                    child: TextField(
-                      controller: tagController,
-                      decoration: InputDecoration(
-                        labelText: 'Input Tag (Optional)',
-                        hintText: 'e.g., Production Run #123',
-                        prefixIcon: Icon(Icons.label, color: Colors.blue[600]),
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.all(16),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 16),
                   Container(
                     padding: EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -690,7 +727,7 @@ class _ProductionPageState extends State<ProductionPage> {
               ),
               ElevatedButton(
                 onPressed: () async {
-                  await _moveToInventory(batch, queueItem, tagController.text);
+                  await _moveToInventory(batch, queueItem);
                   if (mounted) Navigator.pop(context);
                 },
                 style: ElevatedButton.styleFrom(
@@ -712,28 +749,76 @@ class _ProductionPageState extends State<ProductionPage> {
   Future<void> _moveToInventory(
     ProductionQueue batch,
     ProductionQueueItem queueItem,
-    String tag,
   ) async {
     try {
       // Import SupabaseService and InventoryItem
       final service = SupabaseService();
 
-      // Create inventory item with the product from completed batch
-      final inventoryItem = InventoryItem(
-        name:
-            tag.isNotEmpty
-                ? '${queueItem.productName} - $tag'
-                : queueItem.productName,
-        type: 'fresh', // Default status
-        quantity: queueItem.quantity.toDouble(),
-        category: 'Finished Goods',
+      // Normalize the product name: lowercase and trim whitespace
+      final normalizedName = queueItem.productName.toLowerCase().trim();
+
+      // Check if item with same normalized name already exists in "Finished Goods"
+      final existingItems = await service.getInventoryItems();
+      final existingItem = existingItems.cast<InventoryItem?>().firstWhere(
+        (item) =>
+            item != null &&
+            item.name.toLowerCase().trim() == normalizedName &&
+            item.category == 'Finished Goods',
+        orElse: () => null,
       );
 
-      // Add to inventory
-      final result = await service.addInventoryItem(inventoryItem);
+      bool success = false;
 
-      if (result != null) {
-        // Success!
+      if (existingItem != null) {
+        // Item exists - update quantity
+        final updatedItem = InventoryItem(
+          id: existingItem.id,
+          name: existingItem.name,
+          type: existingItem.type,
+          quantity: existingItem.quantity + queueItem.quantity.toDouble(),
+          category: existingItem.category,
+          minQuantity: existingItem.minQuantity,
+        );
+
+        success = await service.updateInventoryItem(updatedItem);
+
+        if (success && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '✓ Added ${queueItem.quantity} units to existing "${existingItem.name}" in Inventory',
+              ),
+              backgroundColor: Colors.green[600],
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      } else {
+        // Item does not exist - create new inventory item
+        final inventoryItem = InventoryItem(
+          name: queueItem.productName.trim(), // Keep original case for display, just trim
+          type: 'fresh', // Default status
+          quantity: queueItem.quantity.toDouble(),
+          category: 'Finished Goods',
+        );
+
+        final result = await service.addInventoryItem(inventoryItem);
+        success = result != null;
+
+        if (success && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '✓ Successfully added to Inventory - Finished Goods',
+              ),
+              backgroundColor: Colors.green[600],
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+
+      if (success) {
         // 1. Mark batch as moved to inventory (keep in production_batches for history)
         await service.updateProductionBatch(batch.id, {
           'moved_to_inventory': true,
@@ -747,25 +832,12 @@ class _ProductionPageState extends State<ProductionPage> {
           productionBatches.removeWhere((b) => b.id == batch.id);
           queueItems.removeWhere((qi) => qi.inventoryId == batch.inventoryId);
         });
-
-        // Show success message
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '✓ Successfully moved to Inventory - Finished Goods',
-              ),
-              backgroundColor: Colors.green[600],
-              duration: Duration(seconds: 3),
-            ),
-          );
-        }
       } else {
-        // Failed to add to inventory
+        // Failed to add/update inventory
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Failed to add to inventory. Please try again.'),
+              content: Text('Failed to update inventory. Please try again.'),
               backgroundColor: Colors.red[600],
               duration: Duration(seconds: 3),
             ),
@@ -895,7 +967,7 @@ class _ProductionPageState extends State<ProductionPage> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '${batch.progress.toInt()}% • ${_displayBatchNumberFor(batch)}',
+                                  '${batch.progress.toInt()}% Completed',
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: Colors.grey[600],
@@ -934,11 +1006,13 @@ class _ProductionPageState extends State<ProductionPage> {
                         ),
                       ],
                   onSelected: (v) {
-                    if (v == 'start')
+                    if (v == 'start') {
                       _updateBatchStatus(batch.id, 'in_progress');
-                    if (v == 'pause') _updateBatchStatus(batch.id, 'paused');
-                    if (v == 'complete')
+                    }
+                    if (v == 'pause') _showPauseDialog(batch, queueItem);
+                    if (v == 'complete') {
                       _updateBatchStatus(batch.id, 'completed');
+                    }
                     if (v == 'details') _showBatchDetails(batch, queueItem);
                   },
                 ),
@@ -960,10 +1034,6 @@ class _ProductionPageState extends State<ProductionPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Batch Number: ${_displayBatchNumberFor(batch)}',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
                 SizedBox(height: 8),
                 Text('Product: ${queueItem.productName}'),
                 Text('Quantity: ${queueItem.quantity}'),
@@ -984,8 +1054,8 @@ class _ProductionPageState extends State<ProductionPage> {
                 ),
                 TextButton(
                   onPressed: () {
-                    _updateBatchStatus(batch.id, 'paused');
-                    Navigator.pop(context);
+                    Navigator.pop(context); // Close details dialog
+                    _showPauseDialog(batch, queueItem);
                   },
                   child: Text('Pause'),
                 ),
@@ -1020,11 +1090,40 @@ class _ProductionPageState extends State<ProductionPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text('Production Queue'),
-        leading: const BackToDashboardButton(),
-        backgroundColor: Colors.blue.shade700,
-        foregroundColor: Colors.white,
         elevation: 0,
+        backgroundColor: Colors.transparent,
+        toolbarHeight: 76,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: const BackToDashboardButton(),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue.shade800, Colors.blue.shade600],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Production Queue',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Manage and reorder batches',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddBatchDialog,
@@ -1181,13 +1280,13 @@ class _ProductionPageState extends State<ProductionPage> {
                                     ),
                                   ),
                                   title: Text(
-                                    _displayBatchNumberFor(batch),
+                                    qi.productName,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                   subtitle: Text(
-                                    qi.productName,
+                                    'Qty: ${qi.quantity}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),

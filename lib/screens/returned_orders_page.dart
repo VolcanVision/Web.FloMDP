@@ -41,7 +41,7 @@ class CompanyFeedback {
 }
 
 class ReturnedOrdersPage extends StatefulWidget {
-  const ReturnedOrdersPage({Key? key}) : super(key: key);
+  const ReturnedOrdersPage({super.key});
 
   @override
   State<ReturnedOrdersPage> createState() => _ReturnedOrdersPageState();
@@ -51,6 +51,7 @@ class _ReturnedOrdersPageState extends State<ReturnedOrdersPage> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
   String _searchQuery = '';
+  String _sortBy = 'date_desc'; // 'name_asc', 'name_desc', 'date_asc', 'date_desc'
   // Filters removed from UI; simple search-only filtering
 
   final List<CompanyFeedback> _feedback = [
@@ -106,8 +107,23 @@ class _ReturnedOrdersPageState extends State<ReturnedOrdersPage> {
           (f.product ?? '').toLowerCase().contains(q) ||
           f.message.toLowerCase().contains(q);
     }).toList();
-    // newest first (ISO date strings sort lexicographically)
-    list.sort((a, b) => b.date.compareTo(a.date));
+    
+    // Apply sorting
+    switch (_sortBy) {
+      case 'name_asc':
+        list.sort((a, b) => a.company.toLowerCase().compareTo(b.company.toLowerCase()));
+        break;
+      case 'name_desc':
+        list.sort((a, b) => b.company.toLowerCase().compareTo(a.company.toLowerCase()));
+        break;
+      case 'date_asc':
+        list.sort((a, b) => a.date.compareTo(b.date));
+        break;
+      case 'date_desc':
+      default:
+        list.sort((a, b) => b.date.compareTo(a.date));
+        break;
+    }
     return list;
   }
 
@@ -126,26 +142,85 @@ class _ReturnedOrdersPageState extends State<ReturnedOrdersPage> {
   // removed rating slider per requirements
 
   Widget _buildSearchField() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue.shade200),
-      ),
-      child: TextField(
-        controller: _searchController,
-        decoration: InputDecoration(
-          labelText: 'Search orders...',
-          prefixIcon: Icon(Icons.search, color: Colors.blue.shade400),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 14,
+    return Row(
+      children: [
+        Expanded(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Search orders...',
+                prefixIcon: Icon(Icons.search, color: Colors.blue.shade400),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                labelStyle: TextStyle(color: Colors.blue.shade700),
+              ),
+              onChanged: (v) => setState(() => _searchQuery = v),
+            ),
           ),
-          labelStyle: TextStyle(color: Colors.blue.shade700),
         ),
-        onChanged: (v) => setState(() => _searchQuery = v),
-      ),
+        const SizedBox(width: 8),
+        PopupMenuButton<String>(
+          icon: Icon(Icons.sort, color: Colors.blue.shade600),
+          tooltip: 'Sort',
+          onSelected: (value) {
+            setState(() {
+              _sortBy = value;
+            });
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'name_asc',
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_upward, size: 16, color: _sortBy == 'name_asc' ? Colors.blue : Colors.grey),
+                  const SizedBox(width: 8),
+                  Text('Name A-Z', style: TextStyle(fontWeight: _sortBy == 'name_asc' ? FontWeight.bold : FontWeight.normal)),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'name_desc',
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_downward, size: 16, color: _sortBy == 'name_desc' ? Colors.blue : Colors.grey),
+                  const SizedBox(width: 8),
+                  Text('Name Z-A', style: TextStyle(fontWeight: _sortBy == 'name_desc' ? FontWeight.bold : FontWeight.normal)),
+                ],
+              ),
+            ),
+            const PopupMenuDivider(),
+            PopupMenuItem(
+              value: 'date_desc',
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_downward, size: 16, color: _sortBy == 'date_desc' ? Colors.blue : Colors.grey),
+                  const SizedBox(width: 8),
+                  Text('Newest First', style: TextStyle(fontWeight: _sortBy == 'date_desc' ? FontWeight.bold : FontWeight.normal)),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'date_asc',
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_upward, size: 16, color: _sortBy == 'date_asc' ? Colors.blue : Colors.grey),
+                  const SizedBox(width: 8),
+                  Text('Oldest First', style: TextStyle(fontWeight: _sortBy == 'date_asc' ? FontWeight.bold : FontWeight.normal)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -443,23 +518,39 @@ class _ReturnedOrdersPageState extends State<ReturnedOrdersPage> {
 
         return Scaffold(
           appBar: AppBar(
-            leading: const BackToDashboardButton(),
-            title: const Text('Returned Orders'),
             elevation: 0,
-            foregroundColor: Colors.blue.shade900,
             backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
-            ),
+            toolbarHeight: 76,
+            centerTitle: false,
+            automaticallyImplyLeading: false,
+            iconTheme: const IconThemeData(color: Colors.white),
+            leading: const BackToDashboardButton(),
             flexibleSpace: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.blue.shade50, Colors.blue.shade100],
+                  colors: [Colors.blue.shade800, Colors.blue.shade600],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
               ),
+            ),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Returned Orders',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Feedback and returns at a glance',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
             ),
           ),
           body: content,

@@ -1,6 +1,6 @@
 {
-    "name": "scm",
-    "short_name": "scm",
+    "name": "MDPlastics",
+    "short_name": "MDPlastics",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

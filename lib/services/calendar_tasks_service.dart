@@ -25,16 +25,15 @@ class CalendarTasksService extends BaseSupabaseService {
       ..remove('created_at') // Let database set this with DEFAULT NOW()
       ..remove('updated_at'); // Let database set this with DEFAULT NOW()
 
-    // Set created_by and assigned_by to current user if not already set
+    // Set assigned_by to current user ID only if not already provided
+    // The caller may pass the role name for assigned_by, so don't override if present
     final currentUser = client.auth.currentUser;
-    if (currentUser != null) {
-      base['assigned_by'] ??= currentUser.id;
-      // Note: created_by might be an integer user ID in your schema
-      // If it's UUID, uncomment the next line:
-      // base['created_by'] ??= currentUser.id;
+    if (currentUser != null && (base['assigned_by'] == null || base['assigned_by'] == '')) {
+      base['assigned_by'] = currentUser.id;
     }
 
-    Future<CalendarTask?> _try(Map<String, dynamic> data) async {
+
+    Future<CalendarTask?> _attemptInsert(Map<String, dynamic> data) async {
       final res = await client
           .from('calendar_tasks')
           .insert(data)
@@ -44,7 +43,7 @@ class CalendarTasksService extends BaseSupabaseService {
     }
 
     try {
-      return await _try({...base});
+      return await _attemptInsert({...base});
     } on PostgrestException catch (e) {
       final msg = e.message.toLowerCase();
       if (msg.contains('row-level security') || msg.contains('rls')) {
@@ -56,7 +55,7 @@ class CalendarTasksService extends BaseSupabaseService {
           final retry = {...base};
           retry['date'] = retry.remove('task_date');
           try {
-            return await _try(retry);
+            return await _attemptInsert(retry);
           } catch (_) {}
         }
       }
@@ -69,18 +68,33 @@ class CalendarTasksService extends BaseSupabaseService {
   }
 
   Future<bool> update(CalendarTask task) async {
-    if (task.id == null) return false;
+    if (task.id == null) {
+      lastError = 'Cannot update task without ID';
+      return false;
+    }
     try {
+      final updateData = task.toMap();
+      updateData.remove('id'); // Don't include id in update payload
+      updateData.remove('created_at'); // Don't update created_at
+      updateData['updated_at'] = DateTime.now().toIso8601String();
+      
+      print('[CalendarTasksService] Updating task ${task.id} with: $updateData');
+      
       await client
           .from('calendar_tasks')
-          .update(task.toMap())
+          .update(updateData)
           .eq('id', task.id!);
+      lastError = null;
+      print('[CalendarTasksService] Update successful for task ${task.id}');
       return true;
     } catch (e) {
       lastError = 'Update failed: $e';
+      print('[CalendarTasksService] Update FAILED: $e');
       return false;
     }
   }
+
+
 
   Future<bool> remove(int id) async {
     try {
@@ -91,4 +105,16 @@ class CalendarTasksService extends BaseSupabaseService {
       return false;
     }
   }
+
+  Future<bool> clearCompleted() async {
+    try {
+      await client.from('calendar_tasks').delete().eq('is_completed', true);
+      return true;
+    } catch (e) {
+      lastError = 'Clear completed failed: $e';
+      return false;
+    }
+  }
 }
+
+

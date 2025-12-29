@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/inventory_item.dart';
+import '../services/excel_export_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/back_to_dashboard.dart';
 
@@ -121,6 +123,189 @@ class _InventoryPageState extends State<InventoryPage>
     }
   }
 
+  /// Show export options dialog
+  void _showExportOptionsDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.download, color: Colors.blue.shade700),
+            const SizedBox(width: 12),
+            const Text('Export Inventory'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.category, color: Colors.blue.shade600),
+              title: const Text('Export Current Category'),
+              subtitle: Text(_categories[_tabController.index]),
+              onTap: () {
+                Navigator.pop(ctx);
+                _exportInventoryToExcel(category: _categories[_tabController.index]);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.inventory_2, color: Colors.green.shade600),
+              title: const Text('Export All Inventory'),
+              subtitle: const Text('All categories'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _exportInventoryToExcel();
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.warning, color: Colors.orange.shade600),
+              title: const Text('Export Low Stock Items'),
+              subtitle: const Text('Items below minimum quantity'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _exportLowStockToExcel();
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Export inventory to Excel/CSV
+  Future<void> _exportInventoryToExcel({String? category}) async {
+    try {
+      final headers = [
+        'Name',
+        'Category',
+        'Type/Status',
+        'Quantity',
+        'Min Quantity',
+        'Stock Status',
+      ];
+
+      List<InventoryItem> itemsToExport;
+      if (category != null) {
+        itemsToExport = _getFilteredItems(category);
+      } else {
+        itemsToExport = _allItems;
+      }
+
+      final List<List<dynamic>> rows = itemsToExport.map((item) {
+        final isLowStock = (item.minQuantity ?? 0) > 0 && item.quantity <= (item.minQuantity ?? 0);
+        return [
+          item.name,
+          item.category,
+          item.type,
+          item.quantity.toString(),
+          (item.minQuantity ?? 0).toString(),
+          isLowStock ? 'LOW STOCK' : 'OK',
+        ];
+      }).toList();
+
+      final fileName = category != null 
+          ? 'inventory_${category.toLowerCase().replaceAll(' ', '_')}_${DateFormat('yyyyMMdd').format(DateTime.now())}'
+          : 'inventory_all_${DateFormat('yyyyMMdd').format(DateTime.now())}';
+
+      await ExcelExportService.instance.exportToCsv(
+        headers: headers,
+        rows: rows,
+        fileName: fileName,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Inventory exported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Export low stock items to Excel/CSV
+  Future<void> _exportLowStockToExcel() async {
+    try {
+      final headers = [
+        'Name',
+        'Category',
+        'Type/Status',
+        'Current Quantity',
+        'Min Quantity',
+        'Shortage',
+      ];
+
+      final lowStockItems = _allItems.where((item) {
+        final minQty = item.minQuantity ?? 0;
+        return minQty > 0 && item.quantity <= minQty;
+      }).toList();
+
+      if (lowStockItems.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No low stock items found!'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final List<List<dynamic>> rows = lowStockItems.map((item) {
+        final shortage = (item.minQuantity ?? 0) - item.quantity.toInt();
+        return [
+          item.name,
+          item.category,
+          item.type,
+          item.quantity.toString(),
+          (item.minQuantity ?? 0).toString(),
+          shortage > 0 ? shortage.toString() : '0',
+        ];
+      }).toList();
+
+      await ExcelExportService.instance.exportToCsv(
+        headers: headers,
+        rows: rows,
+        fileName: 'inventory_low_stock_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Low stock items exported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   List<InventoryItem> _getFilteredItems(String category) {
     // Match category case-insensitively and ignore surrounding whitespace so
     // 'Spare Parts', 'spare parts', or 'Spare parts' are treated the same.
@@ -169,30 +354,8 @@ class _InventoryPageState extends State<InventoryPage>
         backgroundColor: Colors.transparent,
         toolbarHeight: 76,
         centerTitle: false,
+        automaticallyImplyLeading: false,
         iconTheme: const IconThemeData(color: Colors.white),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Inventory',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Manage stock & items',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: Colors.white70,
-              ),
-            ),
-          ],
-        ),
         leading: const BackToDashboardButton(),
         flexibleSpace: Container(
           decoration: BoxDecoration(
@@ -203,6 +366,36 @@ class _InventoryPageState extends State<InventoryPage>
             ),
           ),
         ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Text(
+              'Inventory',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Manage stock & items',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download, color: Colors.white),
+            tooltip: 'Export',
+            onPressed: _showExportOptionsDialog,
+          ),
+        ],
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -238,6 +431,7 @@ class _InventoryPageState extends State<InventoryPage>
                       foregroundColor: Colors.white,
                     ),
                   ),
+                  const SizedBox(width: 12),
                   const Spacer(),
                   if (_loading) const CircularProgressIndicator(),
                 ],
@@ -247,7 +441,7 @@ class _InventoryPageState extends State<InventoryPage>
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: DropdownButtonFormField<String>(
-                value: _selectedStatusFilter,
+                initialValue: _selectedStatusFilter,
                 decoration: InputDecoration(
                   labelText: 'Filter by Status',
                   filled: true,
@@ -409,8 +603,8 @@ class _InventoryPageState extends State<InventoryPage>
       case 'finished goods':
         return ['fresh', 'returned'];
       case 'additives':
-        // allow all known statuses (except 'All' placeholder)
-        return _statusOptions.skip(1).toList();
+        // Additives can only be fresh
+        return ['fresh'];
       case 'spare parts':
         return ['fresh', 'used'];
       default:
@@ -632,65 +826,9 @@ class _InventoryPageState extends State<InventoryPage>
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            // Category FIRST
                             DropdownButtonFormField<String>(
-                              value: selectedType,
-                              decoration: const InputDecoration(
-                                labelText: 'Type (Editable)',
-                                border: OutlineInputBorder(),
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                              ),
-                              items:
-                                  allowedTypes.map((type) {
-                                    return DropdownMenuItem(
-                                      value: type,
-                                      child: Text(_capitalize(type)),
-                                    );
-                                  }).toList(),
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() {
-                                    selectedType = value;
-                                  });
-                                }
-                              },
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: materialController,
-                              decoration: const InputDecoration(
-                                labelText: 'Material (Editable)',
-                                border: OutlineInputBorder(),
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                              ),
-                              enabled: true,
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: totalController,
-                              decoration: const InputDecoration(
-                                labelText: 'Total (Editable)',
-                                border: OutlineInputBorder(),
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                              ),
-                              keyboardType: TextInputType.number,
-                            ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: minQtyController,
-                              decoration: const InputDecoration(
-                                labelText: 'Min Quantity (Editable)',
-                                border: OutlineInputBorder(),
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                              ),
-                              keyboardType: TextInputType.number,
-                            ),
-                            const SizedBox(height: 12),
-                            DropdownButtonFormField<String>(
-                              value: selectedCategory,
+                              initialValue: selectedCategory,
                               decoration: const InputDecoration(
                                 labelText: 'Category (Editable)',
                                 border: OutlineInputBorder(),
@@ -721,6 +859,67 @@ class _InventoryPageState extends State<InventoryPage>
                                   });
                                 }
                               },
+                            ),
+                            const SizedBox(height: 12),
+                            // Type SECOND
+                            DropdownButtonFormField<String>(
+                              initialValue: selectedType,
+                              decoration: const InputDecoration(
+                                labelText: 'Type (Editable)',
+                                border: OutlineInputBorder(),
+                                floatingLabelBehavior:
+                                    FloatingLabelBehavior.always,
+                              ),
+                              items:
+                                  allowedTypes.map((type) {
+                                    return DropdownMenuItem(
+                                      value: type,
+                                      child: Text(_capitalize(type)),
+                                    );
+                                  }).toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() {
+                                    selectedType = value;
+                                  });
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            // Material THIRD
+                            TextField(
+                              controller: materialController,
+                              decoration: const InputDecoration(
+                                labelText: 'Material (Editable)',
+                                border: OutlineInputBorder(),
+                                floatingLabelBehavior:
+                                    FloatingLabelBehavior.always,
+                              ),
+                              enabled: true,
+                            ),
+                            const SizedBox(height: 12),
+                            // Total FOURTH
+                            TextField(
+                              controller: totalController,
+                              decoration: const InputDecoration(
+                                labelText: 'Total (Editable)',
+                                border: OutlineInputBorder(),
+                                floatingLabelBehavior:
+                                    FloatingLabelBehavior.always,
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                            const SizedBox(height: 12),
+                            // Min Qty FIFTH
+                            TextField(
+                              controller: minQtyController,
+                              decoration: const InputDecoration(
+                                labelText: 'Min Quantity (Editable)',
+                                border: OutlineInputBorder(),
+                                floatingLabelBehavior:
+                                    FloatingLabelBehavior.always,
+                              ),
+                              keyboardType: TextInputType.number,
                             ),
                             const SizedBox(height: 12),
                             const Text(

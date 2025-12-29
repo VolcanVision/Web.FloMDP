@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import '../../services/supabase_service.dart';
-import '../../widgets/wire_card.dart';
 import '../../widgets/todo_list_widget.dart';
 import '../../models/calendar_task.dart';
-import '../../models/alert.dart';
 import '../../services/calendar_tasks_service.dart';
 import '../../services/alerts_service.dart';
 import '../../services/purchases_service.dart';
 import '../../services/orders_service.dart';
+import '../../widgets/back_to_dashboard.dart';
 
 class SharedAccountsPage extends StatefulWidget {
   final String role; // 'admin' or 'accounts'
@@ -35,22 +33,17 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
   final PurchasesService _purchasesService = PurchasesService();
   final OrdersService _ordersService = OrdersService.instance;
 
-  List<CalendarTask> _todos = [];
-  List<Alert> _alerts = [];
-  bool _isLoadingTodos = true;
-  bool _isLoadingAlerts = true;
 
   // Metrics
-  int _totalPurchases = 0; // Change type to int to store count of purchases
-  double _totalSales = 0;
+  int _pendingOrdersCount = 0;
   int _dispatchPendingCount = 0;
-  int _approvedCount = 0;
+  int _intransitOrdersCount = 0;
+  int _pendingPurchasesCount = 0;
+  int _deliveredOrdersCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadTodos();
-    _loadAlerts();
     _loadMetrics();
   }
 
@@ -65,19 +58,51 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
           children: [
             SizedBox(
               width: cardWidth,
-              child: _accountsInfoCard('Purchases', _totalPurchases.toString(), Colors.teal.shade600),
+              child: _accountsInfoCard(
+                'Pending Orders',
+                _pendingOrdersCount.toString(),
+                Colors.orange.shade700,
+                onTap: () {
+                  final args = ModalRoute.of(context)?.settings.arguments;
+                  Navigator.pushNamed(context, '/accounts/orders', arguments: args);
+                },
+              ),
             ),
             SizedBox(
               width: cardWidth,
-              child: _accountsInfoCard('Sales', '\$${_totalSales.toStringAsFixed(0)}', Colors.green.shade700),
+              child: _accountsInfoCard(
+                'Dispatch Pending',
+                _dispatchPendingCount.toString(),
+                Colors.blue.shade700,
+                onTap: () {
+                  final args = ModalRoute.of(context)?.settings.arguments;
+                  Navigator.pushNamed(context, '/accounts/dispatch', arguments: args);
+                },
+              ),
             ),
             SizedBox(
               width: cardWidth,
-              child: _accountsInfoCard('Dispatch Pending', _dispatchPendingCount.toString(), Colors.blue.shade700),
+              child: _accountsInfoCard(
+                'Intransit Orders',
+                _intransitOrdersCount.toString(),
+                Colors.teal.shade700,
+                onTap: () {
+                  final args = ModalRoute.of(context)?.settings.arguments;
+                  Navigator.pushNamed(context, '/accounts/dispatch', arguments: args);
+                },
+              ),
             ),
             SizedBox(
               width: cardWidth,
-              child: _accountsInfoCard('Approved', _approvedCount.toString(), Colors.purple.shade700),
+              child: _accountsInfoCard(
+                'Pending Purchases',
+                _pendingPurchasesCount.toString(),
+                Colors.purple.shade700,
+                onTap: () {
+                  final args = ModalRoute.of(context)?.settings.arguments;
+                  Navigator.pushNamed(context, '/accounts/purchase', arguments: args);
+                },
+              ),
             ),
           ],
         );
@@ -85,82 +110,94 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
     );
   }
 
-  Widget _accountsInfoCard(String title, String value, Color color) {
+  Widget _accountsInfoCard(String title, String value, Color color, {VoidCallback? onTap}) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: Container(
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 10,
-              offset: const Offset(0, 6),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+              border: Border.all(color: color.withOpacity(0.12)),
             ),
-          ],
-          border: Border.all(color: color.withOpacity(0.12)),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: 6,
-              left: -40,
-              right: -40,
-              child: Transform.rotate(
-                angle: -0.35,
-                child: Container(
-                  height: 36,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.white.withOpacity(0.28), Colors.white.withOpacity(0.0)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+            child: Stack(
+              children: [
+                Positioned(
+                  top: 6,
+                  left: -40,
+                  right: -40,
+                  child: Transform.rotate(
+                    angle: -0.35,
+                    child: Container(
+                      height: 36,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Colors.white.withOpacity(0.28), Colors.white.withOpacity(0.0)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    value,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        value,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: color,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[900],
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[900],
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
   void _showBentoMenuDialog(BuildContext context) {
+    // Capture args from the PAGE's context BEFORE showing the dialog
+    // This is critical - inside the dialog, ModalRoute.of(context) would return null
+    final pageArgs = ModalRoute.of(context)?.settings.arguments;
+    print('SharedAccountsPage: _showBentoMenuDialog called. Page args: $pageArgs');
+    
     // Use the same symbols as Admin dashboard for parity
     final items = <Map<String, dynamic>>[
       {'icon': Icons.add_shopping_cart, 'label': 'Purchases', 'route': '/accounts/purchase'},
       {'icon': Icons.list_alt, 'label': 'Orders', 'route': '/accounts/orders'},
+      // Dispatch removed from bento
       {'icon': Icons.history, 'label': 'History', 'route': '/accounts/history'},
       {'icon': Icons.calendar_today, 'label': 'Calendar', 'route': '/accounts/calendar'},
     ];
@@ -199,14 +236,15 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
                   crossAxisSpacing: 8,
                   childAspectRatio: 1.25,
                 ),
-                itemBuilder: (context, idx) {
+                itemBuilder: (dialogContext, idx) {
                   final it = items[idx];
                   return InkWell(
                     borderRadius: BorderRadius.circular(8),
                     onTap: () {
                       final route = it['route'] as String?;
-                      Navigator.of(context).pop();
-                      if (route != null) Navigator.pushNamed(context, route);
+                      print('SharedAccountsPage (Menu): Navigating to $route. Using captured args: $pageArgs');
+                      Navigator.of(dialogContext).pop();
+                      if (route != null) Navigator.pushNamed(context, route, arguments: pageArgs);
                     },
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -252,169 +290,52 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
 
   Future<void> _loadMetrics() async {
     try {
-      // Purchases
-      final purchases = await _purchasesService.fetchAll();
-      final purchaseCount = purchases.length; // Count of purchases
-
-      // Sales
       final orders = await _ordersService.getOrders();
-      final totalSales = orders.fold<double>(
-        0,
-        (sum, o) => sum + o.totalAmount,
-      );
+      final purchases = await _purchasesService.fetchAll();
 
-      // Dispatch Pending (production_status = 'completed')
-      final dispatchPending =
-          orders
-              .where((o) => o.productionStatus.toLowerCase() == 'completed')
-              .length;
+      // 1. Pending Orders: 'new', 'pending_approval', 'confirmed'
+      final pendingOrders = orders.where((o) {
+        final st = o.orderStatus.toLowerCase();
+        return st == 'new' || st == 'pending_approval' || st == 'confirmed';
+      }).length;
 
-      // Approved (orderStatus = 'approved')
-      final approved =
-          orders.where((o) => o.orderStatus.toLowerCase() == 'approved').length;
+      // 2. Dispatch Pending: productionStatus == 'completed' AND orderStatus != 'dispatched'
+      final dispatchPending = orders.where((o) {
+        final pSt = o.productionStatus.toLowerCase();
+        final oSt = o.orderStatus.toLowerCase();
+        return pSt == 'completed' && oSt != 'dispatched' && oSt != 'completed';
+      }).length;
+
+      // 3. Intransit Orders: 'dispatched'
+      final intransitOrders = orders.where((o) => o.orderStatus.toLowerCase() == 'dispatched').length;
+
+      // 4. Delivered Orders
+      final deliveredOrders = orders.where((o) => o.orderStatus.toLowerCase() == 'delivered' || o.orderStatus.toLowerCase() == 'completed').length;
+
+      // 4. Pending Purchases: any purchase NOT 'paid'
+      final pendingPurchases = purchases.where((p) => p.paymentStatus?.toLowerCase() != 'paid').length;
 
       setState(() {
-        _totalPurchases = purchaseCount; // Update to use count
-        _totalSales = totalSales;
+        _pendingOrdersCount = pendingOrders;
         _dispatchPendingCount = dispatchPending;
-        _approvedCount = approved;
+        _intransitOrdersCount = intransitOrders;
+        _deliveredOrdersCount = deliveredOrders;
+        _pendingPurchasesCount = pendingPurchases;
       });
     } catch (e) {
       debugPrint('Error loading metrics: $e');
     }
   }
 
-  Future<void> _loadTodos() async {
-    setState(() => _isLoadingTodos = true);
-    try {
-      final allTasks = await _tasksService.fetchAll();
-      // Filter for accounts category and incomplete tasks
-      setState(() {
-        _todos =
-            allTasks
-                .where(
-                  (task) =>
-                      task.category == TaskCategory.accounts &&
-                      !task.isCompleted,
-                )
-                .toList();
-        _isLoadingTodos = false;
-      });
-    } catch (e) {
-      setState(() => _isLoadingTodos = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading todos: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
+  // To-Dos managed by TodoListWidget
 
-  Future<void> _loadAlerts() async {
-    setState(() => _isLoadingAlerts = true);
-    try {
-      final allAlerts = await _alertsService.fetchAll();
-      // Show only unread alerts
-      setState(() {
-        _alerts = allAlerts.where((alert) => !alert.isRead).toList();
-        _isLoadingAlerts = false;
-      });
-    } catch (e) {
-      setState(() => _isLoadingAlerts = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading alerts: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _toggleTodoComplete(CalendarTask task) async {
-    final updatedTask = CalendarTask(
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      date: task.date,
-      category: task.category,
-      isCompleted: !task.isCompleted,
-      assignedTo: task.assignedTo,
-      assignedBy: task.assignedBy,
-      orderId: task.orderId,
-      createdBy: task.createdBy,
-      createdAt: task.createdAt,
-      updatedAt: DateTime.now(),
-    );
-
-    final success = await _tasksService.update(updatedTask);
-    if (success) {
-      _loadTodos(); // Refresh list
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update task: ${_tasksService.lastError}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _markAlertRead(Alert alert) async {
-    final success = await _alertsService.markRead(alert.id!, isRead: true);
-    if (success) {
-      _loadAlerts(); // Refresh list
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to mark as read: ${_alertsService.lastError}',
-            ),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Color _getAlertColor(String alertType) {
-    switch (alertType.toLowerCase()) {
-      case 'error':
-        return Colors.red;
-      case 'warning':
-        return Colors.orange;
-      case 'success':
-        return Colors.green;
-      case 'info':
-      default:
-        return Colors.blue;
-    }
-  }
-
-  IconData _getAlertIcon(String alertType) {
-    switch (alertType.toLowerCase()) {
-      case 'error':
-        return Icons.error_outline;
-      case 'warning':
-        return Icons.warning_amber;
-      case 'success':
-        return Icons.check_circle_outline;
-      case 'info':
-      default:
-        return Icons.info_outline;
-    }
-  }
+  // Alerts helpers removed
 
   @override
   Widget build(BuildContext context) {
     // Sidebar removed; activeRoute not used
+    final args = ModalRoute.of(context)?.settings.arguments;
+    print('SharedAccountsPage: build. Role: ${widget.role}, Args: $args');
 
     return Scaffold(
       appBar: AppBar(
@@ -422,17 +343,20 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
         backgroundColor: Colors.transparent,
         toolbarHeight: 76,
         centerTitle: false,
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: widget.role == 'admin',
+        leading: (widget.role == 'admin' || (ModalRoute.of(context)?.settings.arguments as Map?)?['homeDashboard'] != null)
+            ? const BackToDashboardButton()
+            : null,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Row(
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
-              children: const [
+              children: [
                 Text(
-                  'Accounts',
-                  style: TextStyle(
+                  widget.role == 'admin' ? 'Accounts (Admin)' : 'Accounts',
+                  style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
@@ -457,7 +381,7 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
             ),
           ],
         ),
-        actions: [
+        actions: widget.role == 'accounts' ? [
           // Settings menu similar to Admin header
           PopupMenuButton<String>(
             tooltip: 'Settings',
@@ -465,8 +389,6 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
             onSelected: (value) async {
               switch (value) {
                 case 'refresh':
-                  _loadTodos();
-                  _loadAlerts();
                   _loadMetrics();
                   break;
                 case 'logout':
@@ -534,7 +456,7 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
               ];
             },
           ),
-        ],
+        ] : [],
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -545,108 +467,133 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // (bento menu removed here by request)
-            // Metrics Cards (styled like Admin dashboard info cards)
-            _buildAccountsStatsGrid(),
-
-            const SizedBox(height: 24),
-
-            // Alerts Section
-            WireCard(
-              title: 'Alerts',
-              child:
-                  _isLoadingAlerts
-                      ? const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                      : _alerts.isEmpty
-                      ? Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Center(
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.notifications_none,
-                                size: 48,
-                                color: Colors.grey[400],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'No new alerts',
-                                style: TextStyle(color: Colors.grey[600]),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                      : ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _alerts.length,
-                        separatorBuilder: (context, index) => const Divider(),
-                        itemBuilder: (context, index) {
-                          final alert = _alerts[index];
-                          final color = _getAlertColor(alert.alertType);
-
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: color.withOpacity(0.1),
-                              child: Icon(
-                                _getAlertIcon(alert.alertType),
-                                color: color,
-                              ),
-                            ),
-                            title: Text(
-                              alert.title,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text(alert.description),
-                                if (alert.createdAt != null) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    DateFormat(
-                                      'MMM dd, yyyy - hh:mm a',
-                                    ).format(alert.createdAt!),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(
-                                Icons.check,
-                                color: Colors.green,
-                              ),
-                              onPressed: () => _markAlertRead(alert),
-                              tooltip: 'Mark as read',
-                            ),
-                            isThreeLine: true,
-                          );
-                        },
-                      ),
-            ),
-            const SizedBox(height: 24),
-
-            // To-Do Section — reuse the Admin TodoListWidget for parity
-            TodoListWidget(category: TaskCategory.accounts),
-          ],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.blue.shade50, Colors.blue.shade50, Colors.white],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // (bento menu removed here by request)
+              // Metrics Cards (styled like Admin dashboard info cards)
+              _buildAccountsStatsGrid(),
+  
+              const SizedBox(height: 24),
+  
+              const SizedBox(height: 24),
+  
+              // New Dispatch Summary Card
+              _buildDispatchSummaryCard(),
+  
+              const SizedBox(height: 24),
+              // To-Do Section — reuse the Admin TodoListWidget for parity
+              TodoListWidget(category: TaskCategory.accounts),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildDispatchSummaryCard() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            offset: const Offset(0, 4),
+            blurRadius: 16,
+          ),
+        ],
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            final args = ModalRoute.of(context)?.settings.arguments;
+            Navigator.pushNamed(context, '/accounts/dispatch', arguments: args);
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Row(
+               children: [
+                 // Icon Box
+                 Container(
+                   width: 48,
+                   height: 48,
+                   decoration: BoxDecoration(
+                     color: Colors.indigo.shade50,
+                     borderRadius: BorderRadius.circular(12),
+                   ),
+                   child: Icon(Icons.local_shipping_outlined, color: Colors.indigo.shade600),
+                 ),
+                 const SizedBox(width: 16),
+                 
+                 // Label
+                 Expanded(
+                   child: Column(
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: const [
+                       Text(
+                         'Dispatch Overview',
+                         style: TextStyle(
+                           fontSize: 16,
+                           fontWeight: FontWeight.bold,
+                           color: Colors.black87,
+                         ),
+                       ),
+                       Text(
+                         'Tap to manage shipments',
+                         style: TextStyle(
+                           fontSize: 12,
+                           color: Colors.grey,
+                         ),
+                       ),
+                     ],
+                   ),
+                 ),
+                 
+                 const Icon(Icons.chevron_right, color: Colors.grey),
+               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactStat(String label, int value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          value.toString(),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -730,3 +677,4 @@ Widget _buildBentoMenu(BuildContext context, List<Map<String, dynamic>> items) {
     ),
   );
 }
+

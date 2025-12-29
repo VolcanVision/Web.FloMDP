@@ -4,7 +4,7 @@ import '../widgets/todo_list_widget.dart';
 import '../models/inventory_item.dart';
 import '../services/inventory_service.dart';
 import '../services/supabase_service.dart';
-import '../models/alert.dart';
+// import '../models/alert.dart'; // Alerts removed
 import '../models/order.dart';
 import '../services/orders_service.dart';
 import '../models/calendar_task.dart' show TaskCategory;
@@ -23,13 +23,6 @@ class ProductionDashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<Alert> alerts = [
-      Alert(
-        title: 'Low stock: Glue',
-        description: 'Glue below minimum',
-        createdAt: DateTime.now().subtract(const Duration(days: 1)),
-      ),
-    ];
     final InventoryService inventoryService = InventoryService();
     return Scaffold(
       appBar: AppBar(
@@ -149,7 +142,6 @@ class ProductionDashboardPage extends StatelessWidget {
           ),
         ),
       ),
-      // Sidebar removed — show logout in app bar instead
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -159,261 +151,340 @@ class ProductionDashboardPage extends StatelessWidget {
           ),
         ),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // (Bento menu removed from body; header grid button opens the dialog)
-            SizedBox(
-              height: 120,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                children: [
-                  SizedBox(
-                    width: 200,
-                    child: FutureBuilder<List<Order>>(
-                      future: fetchActiveOrdersNotShipped(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                            child: CircularProgressIndicator(),
-                          );
-                        }
-                        if (snapshot.hasError) {
-                          return Center(
-                            child: Text('Error: \\${snapshot.error}'),
-                          );
-                        }
-                        final int activeOrders = snapshot.data?.length ?? 0;
-                        // Admin-style info card
-                        return ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.deepPurple.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.06),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                              border: Border.all(color: Colors.deepPurple.shade50),
-                            ),
-                            child: Stack(
-                              children: [
-                                Positioned(
-                                  top: 6,
-                                  left: -40,
-                                  right: -40,
-                                  child: Transform.rotate(
-                                    angle: -0.35,
-                                    child: Container(
-                                      height: 36,
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          colors: [Colors.white.withOpacity(0.28), Colors.white.withOpacity(0.0)],
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Active Orders Card
+              // Active Orders Card grid-style
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final cardWidth = (constraints.maxWidth - 12) / 2;
+                  return FutureBuilder<List<Order>>(
+                    future: fetchActiveOrdersNotShipped(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final int activeOrders = snapshot.data?.length ?? 0;
+                      final Color color = Colors.deepPurple.shade700;
+
+                      return SizedBox(
+                        width: cardWidth,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: color.withOpacity(0.14),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.06),
+                                blurRadius: 10,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                            border: Border.all(color: color.withOpacity(0.12)),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              onTap: () {
+                                Navigator.pushNamed(context, '/production/dispatch');
+                              },
+                              child: Stack(
+                                children: [
+                                  // Glossy highlight stripe
+                                  Positioned(
+                                    top: 6,
+                                    left: -40,
+                                    right: -40,
+                                    child: Transform.rotate(
+                                      angle: -0.35,
+                                      child: Container(
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Colors.white.withOpacity(0.28),
+                                              Colors.white.withOpacity(0.0),
+                                            ],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          ),
+                                          borderRadius: BorderRadius.circular(8),
                                         ),
-                                        borderRadius: BorderRadius.circular(8),
                                       ),
                                     ),
                                   ),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        '$activeOrders',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.deepPurple.shade700,
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14.0,
+                                      vertical: 18,
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        Text(
+                                          '$activeOrders',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.bold,
+                                            color: color,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Active Orders',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.grey[900],
-                                          fontWeight: FontWeight.w700,
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Active Orders',
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: color.withOpacity(0.8),
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                // To-Do Section — reuse the Admin/Accounts TodoListWidget for parity
-                TodoListWidget(category: TaskCategory.production),
-                SizedBox(
-                  width: 380,
-                  child: WireCard(
-                    title: 'Alerts',
-                    child: Column(
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange[700],
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
+                                ],
                               ),
                             ),
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Alert creation coming soon!'),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.add_alert),
-                            label: const Text('Add Alert'),
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        ...alerts.map(
-                          (a) => Card(
-                            color: Colors.orange[50],
-                            margin: const EdgeInsets.symmetric(vertical: 2),
-                            child: ListTile(
-                              leading: const Icon(
-                                Icons.notification_important,
-                                color: Colors.orange,
-                              ),
-                              title: Text(
-                                a.title,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              subtitle: Text(a.description),
-                              trailing: Tooltip(
-                                message: 'Created ${_age(a.createdAt)} ago',
-                                child: Text(_age(a.createdAt)),
-                              ),
-                            ),
+                      );
+                    },
+                  );
+                },
+              ),
+
+              
+              const SizedBox(height: 16),
+
+              
+              // Todo List - full width
+              TodoListWidget(category: TaskCategory.production),
+              
+              const SizedBox(height: 16),
+              
+              // Inventory Section
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.inventory_2, color: Colors.teal.shade600, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Inventory',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.grey.shade800,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-                SizedBox(
-                  width: 380,
-                  child: WireCard(
-                    title: 'Inventory',
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal[700],
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.teal.shade600,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
+                        icon: const Icon(Icons.visibility, size: 18),
+                        label: const Text('View Inventory'),
+                        onPressed: () => _showImprovedInventoryDialog(context, inventoryService),
                       ),
-                      icon: const Icon(Icons.inventory_2),
-                      label: const Text('View Inventory'),
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (context) {
-                            return AlertDialog(
-                              title: const Text('Inventory Items'),
-                              content: SizedBox(
-                                width: 400,
-                                child: FutureBuilder<List<InventoryItem>>(
-                                  future: inventoryService.fetchAll(),
-                                  builder: (context, snapshot) {
-                                    if (snapshot.connectionState ==
-                                        ConnectionState.waiting) {
-                                      return const Center(
-                                        child: CircularProgressIndicator(),
-                                      );
-                                    }
-                                    if (snapshot.hasError) {
-                                      return Text('Error: \\${snapshot.error}');
-                                    }
-                                    final items = snapshot.data ?? [];
-                                    if (items.isEmpty) {
-                                      return const Text(
-                                        'No inventory items found.',
-                                      );
-                                    }
-                                    return ListView(
-                                      shrinkWrap: true,
-                                      children:
-                                          items.map((i) {
-                                            final int required =
-                                                i.minQuantity ?? 0;
-                                            final double stock = i.quantity;
-                                            final double total =
-                                                stock - required;
-                                            final color =
-                                                total < 0
-                                                    ? Colors.red
-                                                    : Colors.green;
-                                            return ListTile(
-                                              leading: Icon(
-                                                Icons.circle,
-                                                color: color,
-                                                size: 18,
-                                              ),
-                                              title: Text(i.name),
-                                              subtitle: Text(
-                                                'Stock: \\${stock.toStringAsFixed(2)}, Required: \\${required}',
-                                              ),
-                                            );
-                                          }).toList(),
-                                    );
-                                  },
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context),
-                                  child: const Text('Close'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
-      )
     );
   }
+  
+  void _showImprovedInventoryDialog(BuildContext context, InventoryService inventoryService) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 400,
+          constraints: const BoxConstraints(maxHeight: 500),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.teal.shade600, Colors.teal.shade400],
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.inventory_2, color: Colors.white),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Inventory Status',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Flexible(
+                child: FutureBuilder<List<InventoryItem>>(
+                  future: inventoryService.fetchAll(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text('Error: ${snapshot.error}'),
+                      );
+                    }
+                    final items = snapshot.data ?? [];
+                    if (items.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Text('No inventory items found.'),
+                      );
+                    }
+                    return ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.all(12),
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final item = items[index];
+                        final required = item.minQuantity ?? 0;
+                        final stock = item.quantity;
+                        final diff = stock - required;
+                        final isLow = diff < 0;
+                        
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isLow ? Colors.red.shade50 : Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isLow ? Colors.red.shade200 : Colors.green.shade200,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: isLow ? Colors.red.shade100 : Colors.green.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  isLow ? Icons.warning_amber : Icons.check_circle,
+                                  color: isLow ? Colors.red.shade600 : Colors.green.shade600,
+                                  size: 22,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Stock: ${stock.toStringAsFixed(0)} | Min: $required',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isLow ? Colors.red.shade600 : Colors.green.shade600,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  isLow ? 'LOW' : 'OK',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
 
   Future<List<Order>> fetchActiveOrdersNotShipped() async {
     final orders = await OrdersService.instance.getOrders();
@@ -458,7 +529,56 @@ void _showProductionBentoMenu(BuildContext context) {
                 ),
               ],
             ),
-            child: _buildBentoMenu(ctx, items),
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              // Show as grid
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 0.9,
+              ),
+              itemBuilder: (context, idx) {
+                final it = items[idx];
+                return InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () {
+                    final route = it['route'] as String?;
+                    final args = ModalRoute.of(context)?.settings.arguments;
+                    Navigator.of(context).pop();
+                    if (route != null) Navigator.pushNamed(context, route, arguments: args);
+                  },
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: Colors.blue[600],
+                        radius: 20,
+                        child: Icon(
+                          it['icon'] as IconData,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        it['label'],
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blueGrey[800],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         ),
       );
@@ -469,87 +589,5 @@ void _showProductionBentoMenu(BuildContext context) {
         child: Opacity(opacity: anim.value, child: child),
       );
     },
-  );
-}
-
-Widget _buildBentoMenu(BuildContext context, List<Map<String, dynamic>> items) {
-  const int cols = 3;
-  const double spacing = 8;
-
-  return Card(
-    elevation: 2,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final double totalWidth = constraints.maxWidth;
-          final double tileWidth = (totalWidth - (spacing * (cols - 1))) / cols;
-          final double tileHeight = tileWidth * 0.85;
-          final int rows = (items.length / cols).ceil();
-          final double gridHeight = rows * tileHeight + (rows - 1) * spacing;
-
-          return SizedBox(
-            height: gridHeight,
-            child: GridView.count(
-              padding: EdgeInsets.zero,
-              crossAxisCount: cols,
-              crossAxisSpacing: spacing,
-              mainAxisSpacing: spacing,
-              childAspectRatio: tileWidth / tileHeight,
-              physics: const NeverScrollableScrollPhysics(),
-              children:
-                  items.map((it) {
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () {
-                        final route = it['route'] as String?;
-                        if (route != null) Navigator.pushNamed(context, route);
-                      },
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 8,
-                          horizontal: 6,
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor: Colors.blue.shade50,
-                              child: Icon(
-                                it['icon'] as IconData,
-                                color: Colors.blue.shade700,
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Flexible(
-                              child: Text(
-                                it['label'],
-                                textAlign: TextAlign.center,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-            ),
-          );
-        },
-      ),
-    ),
   );
 }

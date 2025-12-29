@@ -185,11 +185,11 @@ class _DispatchPageState extends State<DispatchPage> {
               ),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: Text('Ship'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                 ),
+                child: Text('Ship'),
               ),
             ],
           ),
@@ -257,8 +257,40 @@ class _DispatchPageState extends State<DispatchPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Dispatch Management'),
-        leading: BackToDashboardButton(),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        toolbarHeight: 76,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: const BackToDashboardButton(),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue.shade800, Colors.blue.shade600],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Dispatch Management',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Monitor and ship orders',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
       ),
       body:
           _isLoading

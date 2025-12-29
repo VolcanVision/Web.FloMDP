@@ -15,13 +15,22 @@ class OrderHistory {
   String? shippedAt;
   String? paymentDueDate;
   double pendingAmount;
+  String? destination; // Added location field
+  String? status; // Added status field
   DateTime? createdAt;
+  // Shipment details
+  String? shippingCompany;
+  String? vehicleDetails;
+  String? driverContact;
+  String? shipmentIncharge;
 
   OrderHistory({
     this.id,
     this.orderNumber,
     this.clientName,
     this.productsList,
+    this.destination, // Added location field
+    this.status, // Added status field
     this.dueDate,
     this.dispatchDate,
     required this.totalAmount,
@@ -35,6 +44,10 @@ class OrderHistory {
     this.paymentDueDate,
     required this.pendingAmount,
     this.createdAt,
+    this.shippingCompany,
+    this.vehicleDetails,
+    this.driverContact,
+    this.shipmentIncharge,
   });
 
   factory OrderHistory.fromMap(Map<String, dynamic> map) {
@@ -60,9 +73,9 @@ class OrderHistory {
       try {
         final d = map['dispatch_date'];
         DateTime? dispatchDt;
-        if (d is String)
+        if (d is String) {
           dispatchDt = DateTime.tryParse(d);
-        else if (d is DateTime)
+        } else if (d is DateTime)
           dispatchDt = d;
         else if (d is int)
           dispatchDt = DateTime.fromMillisecondsSinceEpoch(d);
@@ -86,6 +99,8 @@ class OrderHistory {
       orderNumber: map['order_number'],
       clientName: map['client_name'],
       productsList: map['products_list'],
+      destination: map['destination'] ?? map['delivery_location'], 
+      status: map['status'],
       dueDate: map['due_date'],
       dispatchDate: map['dispatch_date'],
       totalAmount:
@@ -101,12 +116,14 @@ class OrderHistory {
         if (v == null) return null;
         if (v is String) return v;
         if (v is DateTime) return v.toIso8601String();
-        if (v is int)
+        if (v is int) {
           return DateTime.fromMillisecondsSinceEpoch(v).toIso8601String();
-        if (v is double)
+        }
+        if (v is double) {
           return DateTime.fromMillisecondsSinceEpoch(
             v.toInt(),
           ).toIso8601String();
+        }
         return v.toString();
       }(),
       paymentDueDate: map['payment_due_date'],
@@ -118,12 +135,17 @@ class OrderHistory {
         if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
         if (v is String) {
           final parsedInt = int.tryParse(v);
-          if (parsedInt != null)
+          if (parsedInt != null) {
             return DateTime.fromMillisecondsSinceEpoch(parsedInt);
+          }
           return DateTime.tryParse(v);
         }
         return null;
       }(),
+      shippingCompany: map['shipping_company'],
+      vehicleDetails: map['vehicle_details'],
+      driverContact: map['driver_contact_number'] ?? map['driver_contact'],
+      shipmentIncharge: map['shipment_incharge'],
     );
   }
 }

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../widgets/back_to_dashboard.dart';
 import '../../services/lab_test_service.dart';
+import '../../services/excel_export_service.dart';
 import '../../models/lab_test.dart';
 import '../../models/sub_test.dart';
 import 'package:intl/intl.dart';
+import '../../auth/auth_service.dart';
 
 class LabTestPage extends StatefulWidget {
   const LabTestPage({super.key});
@@ -87,10 +89,11 @@ class _LabTestPageState extends State<LabTestPage> {
 
   Future<void> _markTestAsPending(LabTest test) async {
     if (test.id == null) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cannot update test without id')),
         );
+      }
       return;
     }
     try {
@@ -106,19 +109,21 @@ class _LabTestPageState extends State<LabTestPage> {
         await _loadCompletedTests();
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error marking pending: $e')));
+      }
     }
   }
 
   Future<void> _markTestAsCompleted(LabTest test) async {
     if (test.id == null) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Cannot update test without id')),
         );
+      }
       return;
     }
     try {
@@ -136,10 +141,97 @@ class _LabTestPageState extends State<LabTestPage> {
         await _loadCompletedTests();
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error marking completed: $e')));
+      }
+    }
+  }
+
+  Future<void> _exportLabTestsToExcel() async {
+    try {
+      // Get all tests (both active and completed)
+      final List<LabTest> allTests = [..._activeTests, ..._completedTests];
+      
+      // If completed tests are empty, load them first
+      if (_completedTests.isEmpty && _completedCount > 0) {
+        final completed = await _labTestService.getCompletedTests();
+        allTests.addAll(completed);
+      }
+
+      if (allTests.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No tests to export')),
+          );
+        }
+        return;
+      }
+
+      final headers = [
+        'Test Name',
+        'Status',
+        'Created Date',
+        'Completed Date',
+        'Sub-Tests',
+        'Notes',
+      ];
+
+      final List<List<dynamic>> rows = [];
+      
+      for (final test in allTests) {
+        // Get sub-tests for this test
+        List<SubTest> subTests = [];
+        if (test.id != null) {
+          try {
+            subTests = await _labTestService.getSubTests(test.id!);
+          } catch (_) {
+            subTests = [];
+          }
+        }
+
+        final subTestsStr = subTests
+            .map((s) => '${s.testName}: ${s.result ?? 'N/A'}')
+            .join('; ');
+
+        rows.add([
+          test.testName ?? test.materialName ?? 'Unnamed Test',
+          test.status?.toUpperCase() ?? 'ACTIVE',
+          test.createdAt != null
+              ? DateFormat('dd/MM/yyyy').format(test.createdAt!)
+              : '',
+          test.completedAt != null
+              ? DateFormat('dd/MM/yyyy').format(test.completedAt!)
+              : '',
+          subTestsStr,
+          test.notes ?? '',
+        ]);
+      }
+
+      await ExcelExportService.instance.exportToCsv(
+        headers: headers,
+        rows: rows,
+        fileName: 'lab_tests_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lab tests exported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting tests: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -148,25 +240,67 @@ class _LabTestPageState extends State<LabTestPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        leading: const BackToDashboardButton(),
-        title: const Text('Lab Testing'),
-        backgroundColor: Colors.blue.shade700,
-        foregroundColor: Colors.white,
         elevation: 0,
+        backgroundColor: Colors.transparent,
+        toolbarHeight: 76,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: (ModalRoute.of(context)?.settings.name == '/lab_testing/dashboard' && 
+                  (ModalRoute.of(context)?.settings.arguments as Map?)?['homeDashboard'] == null)
+            ? IconButton(
+                icon: const Icon(Icons.logout, color: Colors.white),
+                onPressed: () async {
+                  await AuthService.logout();
+                  Navigator.pushReplacementNamed(context, '/login');
+                },
+                tooltip: 'Logout',
+              )
+            : const BackToDashboardButton(),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue.shade800, Colors.blue.shade600],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Lab Testing',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Quality assurance & testing',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.download, color: Colors.white),
+            onPressed: _exportLabTestsToExcel,
+            tooltip: 'Download All Tests',
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _loadData,
             tooltip: 'Refresh',
-            color: Colors.white,
-          ),
-          // Prominent add button with blue accent
-          IconButton(
-            icon: Icon(Icons.add_circle, color: Colors.white, size: 28),
-            onPressed: _showAddTestDialog,
-            tooltip: 'Add New Test',
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAddTestDialog,
+        backgroundColor: Colors.blue.shade700,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
       body:
           _isLoading
@@ -435,6 +569,72 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
     }
   }
 
+  Future<void> _exportSingleTestToExcel() async {
+    try {
+      // Get sub-tests for this test
+      List<SubTest> subTests = [];
+      if (widget.test.id != null) {
+        try {
+          subTests = await _labTestService.getSubTests(widget.test.id!);
+        } catch (_) {
+          subTests = [];
+        }
+      }
+
+      final headers = [
+        'Field',
+        'Value',
+      ];
+
+      final rows = <List<dynamic>>[
+        ['Test Name', widget.test.testName ?? 'Unnamed Test'],
+        ['Status', widget.test.status?.toUpperCase() ?? 'ACTIVE'],
+        ['Created Date', widget.test.createdAt != null
+            ? DateFormat('dd/MM/yyyy').format(widget.test.createdAt!)
+            : 'N/A'],
+        ['Completed Date', widget.test.completedAt != null
+            ? DateFormat('dd/MM/yyyy').format(widget.test.completedAt!)
+            : 'N/A'],
+        ['Notes', widget.test.notes ?? ''],
+        ['', ''], // Empty row
+        ['Sub-Tests', ''],
+      ];
+
+      // Add sub-tests
+      for (final subTest in subTests) {
+        rows.add(['  ${subTest.testName}', subTest.result ?? 'N/A']);
+      }
+
+      if (subTests.isEmpty) {
+        rows.add(['  No sub-tests', '']);
+      }
+
+      await ExcelExportService.instance.exportToCsv(
+        headers: headers,
+        rows: rows,
+        fileName: 'lab_test_${widget.test.testName?.replaceAll(' ', '_') ?? widget.test.id}_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Test exported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting test: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   void _addSubTest() {
     showDialog(
       context: context,
@@ -545,9 +745,9 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
   }
 
   void _showEditSubTestDialog(SubTest subTest) {
-    final _nameCtrl = TextEditingController(text: subTest.testName);
-    final _resultCtrl = TextEditingController(text: subTest.result ?? '');
-    DateTime _pickedDate = subTest.testDate ?? DateTime.now();
+    final nameCtrl = TextEditingController(text: subTest.testName);
+    final resultCtrl = TextEditingController(text: subTest.result ?? '');
+    DateTime pickedDate = subTest.testDate ?? DateTime.now();
 
     showDialog(
       context: context,
@@ -563,7 +763,7 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       TextField(
-                        controller: _nameCtrl,
+                        controller: nameCtrl,
                         decoration: const InputDecoration(
                           labelText: 'Test Name',
                         ),
@@ -573,12 +773,12 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
                         onTap: () async {
                           final picked = await showDatePicker(
                             context: ctx,
-                            initialDate: _pickedDate,
+                            initialDate: pickedDate,
                             firstDate: DateTime(2020),
                             lastDate: DateTime(2030),
                           );
                           if (picked != null) {
-                            setStateDialog(() => _pickedDate = picked);
+                            setStateDialog(() => pickedDate = picked);
                           }
                         },
                         child: Container(
@@ -599,7 +799,7 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
                               ),
                               const SizedBox(width: 12),
                               Text(
-                                DateFormat('MMM dd, yyyy').format(_pickedDate),
+                                DateFormat('MMM dd, yyyy').format(pickedDate),
                               ),
                             ],
                           ),
@@ -607,7 +807,7 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
                       ),
                       const SizedBox(height: 12),
                       TextField(
-                        controller: _resultCtrl,
+                        controller: resultCtrl,
                         decoration: const InputDecoration(labelText: 'Result'),
                       ),
                     ],
@@ -623,9 +823,9 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
               ElevatedButton(
                 onPressed: () async {
                   final updated = subTest.copyWith(
-                    testName: _nameCtrl.text,
-                    testDate: _pickedDate,
-                    result: _resultCtrl.text.isEmpty ? null : _resultCtrl.text,
+                    testName: nameCtrl.text,
+                    testDate: pickedDate,
+                    result: resultCtrl.text.isEmpty ? null : resultCtrl.text,
                     updatedAt: DateTime.now(),
                   );
                   try {
@@ -687,6 +887,11 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
                     ),
                   ),
                   IconButton(
+                    tooltip: 'Download test',
+                    icon: const Icon(Icons.download, color: Colors.white),
+                    onPressed: _exportSingleTestToExcel,
+                  ),
+                  IconButton(
                     tooltip: 'Delete test',
                     icon: const Icon(Icons.delete_outline, color: Colors.white),
                     onPressed: () => _confirmAndDeleteTest(),
@@ -705,17 +910,8 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Material Name
-                    Text(
-                      'Material Name',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.test.materialName ?? 'Not specified',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    const SizedBox(height: 24),
+                    // Test Name (header already shows this, but keeping for context)
+                    // Material Name section removed - same as test name
 
                     // Composition (editable, hidden from capture)
                     Text(
@@ -947,6 +1143,7 @@ class _TestDetailsDialogState extends State<TestDetailsDialog> {
   }
 }
 
+// Add Test Dialog
 class AddTestDialog extends StatefulWidget {
   final VoidCallback onTestAdded;
 
@@ -958,39 +1155,22 @@ class AddTestDialog extends StatefulWidget {
 
 class _AddTestDialogState extends State<AddTestDialog> {
   final LabTestService _labTestService = LabTestService();
-  final TextEditingController _testNameController = TextEditingController();
   final TextEditingController _materialNameController = TextEditingController();
   final TextEditingController _compositionController = TextEditingController();
-  final TextEditingController _resultController = TextEditingController();
-  DateTime _selectedDate = DateTime.now();
   bool _isSaving = false;
 
   @override
   void dispose() {
-    _testNameController.dispose();
     _materialNameController.dispose();
     _compositionController.dispose();
-    _resultController.dispose();
     super.dispose();
   }
 
-  Future<void> _selectDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    if (picked != null) {
-      setState(() => _selectedDate = picked);
-    }
-  }
-
   Future<void> _submit() async {
-    if (_testNameController.text.isEmpty) {
+    if (_materialNameController.text.isEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Please enter a test name')));
+      ).showSnackBar(const SnackBar(content: Text('Please enter a material name')));
       return;
     }
 
@@ -998,24 +1178,24 @@ class _AddTestDialogState extends State<AddTestDialog> {
 
     try {
       final test = LabTest(
-        testName: _testNameController.text,
+        testName: _materialNameController.text, // Use material name as test name
         materialName: _materialNameController.text,
         composition:
             _compositionController.text.isEmpty
                 ? null
                 : _compositionController.text,
-        testDate: _selectedDate,
-        result: _resultController.text.isEmpty ? null : _resultController.text,
+        testDate: DateTime.now(), // Default to today
+        result: null, // No initial result
         status: 'active', // Always start as active
         createdAt: DateTime.now(),
-        completedAt: null, // No completion date when first created
+        completedAt: null,
       );
 
       await _labTestService.createTest(test);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Test created successfully')),
+          const SnackBar(content: Text('Test material created successfully')),
         );
         Navigator.of(context).pop();
         widget.onTestAdded();
@@ -1040,116 +1220,58 @@ class _AddTestDialogState extends State<AddTestDialog> {
           const Text('Add New Test'),
         ],
       ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Test Details',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _testNameController,
-              decoration: InputDecoration(
-                labelText: 'Test Name *',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.label_outline),
-                hintText: 'e.g. pH Level Test',
-                filled: true,
-                fillColor: Colors.grey[50],
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _compositionController,
-              decoration: InputDecoration(
-                labelText: 'Composition (Optional)',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.list_alt),
-                hintText: 'e.g. 70% Polymer, 30% Filler',
-                filled: true,
-                fillColor: Colors.grey[50],
-              ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _materialNameController,
-              decoration: InputDecoration(
-                labelText: 'Material Name',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.inventory_2_outlined),
-                hintText: 'e.g. Raw Material Batch #123',
-                filled: true,
-                fillColor: Colors.grey[50],
-              ),
-            ),
-            const SizedBox(height: 16),
-            InkWell(
-              onTap: _selectDate,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 16,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey),
-                  borderRadius: BorderRadius.circular(4),
-                  color: Colors.grey[50],
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.calendar_today, color: Colors.grey[700]),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Test Date *',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            DateFormat('MMM dd, yyyy').format(_selectedDate),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.arrow_drop_down, color: Colors.grey[700]),
-                  ],
+      content: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        constraints: const BoxConstraints(maxWidth: 500),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Test Details',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _resultController,
-              decoration: InputDecoration(
-                labelText: 'Test Result (Optional)',
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.assignment_turned_in_outlined),
-                hintText: 'e.g. Pass / Fail / 7.2 pH',
-                filled: true,
-                fillColor: Colors.grey[50],
-                helperText: 'Leave empty if test not yet conducted',
-                helperMaxLines: 2,
+              const SizedBox(height: 12),
+              TextField(
+                controller: _materialNameController,
+                decoration: InputDecoration(
+                  labelText: 'Test Name *',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.science_outlined),
+                  hintText: 'e.g. Raw Material Batch #123',
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
               ),
-              maxLines: 2,
-            ),
-          ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: _compositionController,
+                decoration: InputDecoration(
+                  labelText: 'Composition (Optional)',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.list_alt),
+                  hintText: 'e.g. 70% Polymer, 30% Filler',
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'You can add specific sub-tests (e.g. pH, Moisture) after creating this entry.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[500],
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [

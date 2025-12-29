@@ -24,13 +24,13 @@ class AlertsService extends BaseSupabaseService {
   Future<Alert?> create(Alert alert) async {
     lastError = null;
     final base = alert.toMap()..remove('id');
-    Future<Alert?> _try(Map<String, dynamic> data) async {
+    Future<Alert?> _attemptInsert(Map<String, dynamic> data) async {
       final res = await client.from('alerts').insert(data).select().single();
       return Alert.fromMap(res);
     }
 
     try {
-      return await _try({...base});
+      return await _attemptInsert({...base});
     } on PostgrestException catch (e) {
       final msg = e.message.toLowerCase();
       if (msg.contains('row-level security') || msg.contains('rls')) {
@@ -41,7 +41,7 @@ class AlertsService extends BaseSupabaseService {
         final retry = {...base};
         retry['message'] = retry.remove('description');
         try {
-          return await _try(retry);
+          return await _attemptInsert(retry);
         } catch (_) {}
       }
       lastError = e.message;

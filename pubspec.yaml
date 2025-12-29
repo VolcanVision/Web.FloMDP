@@ -44,6 +44,15 @@ dependencies:
   sqflite: ^2.2.8
   path: any
   postgrest: ^2.5.0
+  fl_chart: ^1.1.1
+  csv: ^6.0.0
+  universal_html: ^2.2.4
+  path_provider: ^2.1.1
+  share_plus: ^7.2.2
+  crypto: ^3.0.7
+  firebase_core: ^2.24.2
+  firebase_messaging: ^14.7.10
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:
@@ -55,6 +64,13 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/MDP_logo.jpeg"
+  min_sdk_android: 21 # android launcher icons min sdk
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -68,9 +84,9 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/MDP_logo.jpeg
+    - assets/VOLCAN_logo.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

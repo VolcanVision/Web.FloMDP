@@ -1,3 +1,4 @@
+import '../../auth/auth_service.dart';
 import '../../models/order_item.dart';
 import '../../services/orders_service.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +10,8 @@ import '../../widgets/back_to_dashboard.dart';
 import '../../widgets/wire_card.dart';
 
 class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key});
+  final UserRole? role;
+  const HistoryPage({super.key, this.role});
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
@@ -21,6 +23,9 @@ class _HistoryPageState extends State<HistoryPage> {
   final ShipmentService _shipmentService = ShipmentService();
   final TextEditingController _searchController = TextEditingController();
   List<OrderHistory> _displayOrders = [];
+  
+  // Sort options
+  String _sortBy = 'date_desc'; // 'name_asc', 'name_desc', 'date_asc', 'date_desc'
 
   @override
   void initState() {
@@ -44,6 +49,7 @@ class _HistoryPageState extends State<HistoryPage> {
       setState(() {
         _historyOrders = history.take(30).toList();
         _displayOrders = List.from(_historyOrders);
+        _sortOrders();
         _isLoading = false;
       });
 
@@ -87,6 +93,32 @@ class _HistoryPageState extends State<HistoryPage> {
     }
   }
 
+  void _sortOrders() {
+    switch (_sortBy) {
+      case 'name_asc':
+        _displayOrders.sort((a, b) => (a.clientName ?? '').toLowerCase().compareTo((b.clientName ?? '').toLowerCase()));
+        break;
+      case 'name_desc':
+        _displayOrders.sort((a, b) => (b.clientName ?? '').toLowerCase().compareTo((a.clientName ?? '').toLowerCase()));
+        break;
+      case 'date_asc':
+        _displayOrders.sort((a, b) {
+          final aDate = DateTime.tryParse(a.shippedAt ?? '') ?? DateTime(1970);
+          final bDate = DateTime.tryParse(b.shippedAt ?? '') ?? DateTime(1970);
+          return aDate.compareTo(bDate);
+        });
+        break;
+      case 'date_desc':
+      default:
+        _displayOrders.sort((a, b) {
+          final aDate = DateTime.tryParse(a.shippedAt ?? '') ?? DateTime(1970);
+          final bDate = DateTime.tryParse(b.shippedAt ?? '') ?? DateTime(1970);
+          return bDate.compareTo(aDate);
+        });
+        break;
+    }
+  }
+
   void _onSearchChanged(String q) {
     final query = q.trim().toLowerCase();
     setState(() {
@@ -100,10 +132,18 @@ class _HistoryPageState extends State<HistoryPage> {
               return client.contains(query) || orderNo.contains(query);
             }).toList();
       }
+      _sortOrders();
     });
   }
 
   void _showOrderDetails(OrderHistory order) {
+    // For production role, show a simplified dialog
+    if (widget.role == UserRole.production) {
+      _showProductionOrderDetails(order);
+      return;
+    }
+    
+    // Full dialog for admin/accounts
     showDialog(
       context: context,
       builder:
@@ -122,9 +162,10 @@ class _HistoryPageState extends State<HistoryPage> {
               );
 
               // compute final installment date locally as dispatchDate + afterDispatchDays
-              String _computeFinalFromDispatch() {
-                if (order.dispatchDate == null || order.dispatchDate!.isEmpty)
+              String computeFinalFromDispatch() {
+                if (order.dispatchDate == null || order.dispatchDate!.isEmpty) {
                   return 'N/A';
+                }
                 final base = DateTime.tryParse(order.dispatchDate!);
                 if (base == null) return 'N/A';
                 final after = order.afterDispatchDays;
@@ -133,7 +174,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 return _formatDateString(finalDt.toIso8601String());
               }
 
-              final finalDateText = _computeFinalFromDispatch();
+              final finalDateText = computeFinalFromDispatch();
 
               return Dialog(
                 insetPadding: const EdgeInsets.symmetric(
@@ -195,7 +236,6 @@ class _HistoryPageState extends State<HistoryPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Show primary identifiers on separate lines to avoid overflow
                               _buildDetailRow(
                                 'Order No.',
                                 order.orderNumber ?? 'N/A',
@@ -214,11 +254,13 @@ class _HistoryPageState extends State<HistoryPage> {
                                         : Future.value([]),
                                 builder: (context, snap) {
                                   if (snap.connectionState ==
-                                      ConnectionState.waiting)
+                                      ConnectionState.waiting) {
                                     return const Text('Loading products...');
+                                  }
                                   final items = snap.data ?? [];
-                                  if (items.isEmpty)
+                                  if (items.isEmpty) {
                                     return _buildDetailRow('Products', 'None');
+                                  }
 
                                   final lines = items
                                       .map(
@@ -246,6 +288,41 @@ class _HistoryPageState extends State<HistoryPage> {
                               ),
                               const SizedBox(height: 12),
                               const Divider(height: 16, thickness: 1),
+                              
+                              // Shipment Details Section
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                child: Text(
+                                  'Shipment Details:',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: Colors.blue[700],
+                                  ),
+                                ),
+                              ),
+                              _buildDetailRow(
+                                'Shipping Company',
+                                order.shippingCompany ?? '-',
+                              ),
+                              const SizedBox(height: 4),
+                              _buildDetailRow(
+                                'Vehicle',
+                                order.vehicleDetails ?? '-',
+                              ),
+                              const SizedBox(height: 4),
+                              _buildDetailRow(
+                                'Driver Contact',
+                                order.driverContact ?? '-',
+                              ),
+                              const SizedBox(height: 4),
+                              _buildDetailRow(
+                                'Incharge',
+                                order.shipmentIncharge ?? '-',
+                              ),
+                              const SizedBox(height: 12),
+                              const Divider(height: 16, thickness: 1),
+
                               Padding(
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 8,
@@ -259,7 +336,6 @@ class _HistoryPageState extends State<HistoryPage> {
                                   ),
                                 ),
                               ),
-
                               if (snapshot.connectionState ==
                                   ConnectionState.waiting)
                                 Center(
@@ -283,18 +359,13 @@ class _HistoryPageState extends State<HistoryPage> {
                                 )
                               else
                                 ...advances.asMap().entries.map((entry) {
-                                  final idx = entry.key; // 0-based
+                                  final idx = entry.key;
                                   final payment = entry.value;
-                                  // For user-facing numbering, idx 0 == installment 1 (odd)
                                   final bool isOdd = idx % 2 == 0;
                                   final Color bgColor =
                                       isOdd
-                                          ? const Color(
-                                            0xFFF0FBF4,
-                                          ) // pale green
-                                          : const Color(
-                                            0xFFF4FAFF,
-                                          ); // pale blue
+                                          ? const Color(0xFFF0FBF4)
+                                          : const Color(0xFFF4FAFF);
                                   final Color titleColor =
                                       isOdd
                                           ? Colors.green.shade800
@@ -330,7 +401,6 @@ class _HistoryPageState extends State<HistoryPage> {
                                     ),
                                   );
                                 }),
-
                               if (advances.isNotEmpty)
                                 _buildDetailRow(
                                   'Total Installments',
@@ -338,7 +408,6 @@ class _HistoryPageState extends State<HistoryPage> {
                                   color: Colors.green[700],
                                   isBold: true,
                                 ),
-
                               const Divider(height: 16, thickness: 1),
                               Row(
                                 children: [
@@ -354,7 +423,6 @@ class _HistoryPageState extends State<HistoryPage> {
                                   ),
                                 ],
                               ),
-
                               _buildDetailRow(
                                 'Days After Dispatch',
                                 '${order.afterDispatchDays}',
@@ -411,6 +479,137 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  /// Simplified dialog for production role - shows only essential info
+  void _showProductionOrderDetails(OrderHistory order) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 400,
+            maxHeight: MediaQuery.of(context).size.height * 0.7,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue.shade800, Colors.blue.shade600],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                ),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Order Details',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildCompactRow('Client', order.clientName ?? 'N/A'),
+                      _buildCompactRow('Order No.', order.orderNumber ?? 'N/A'),
+                      FutureBuilder<List<OrderItem>>(
+                        future: order.id != null
+                            ? OrdersService.instance.getOrderItemsForOrder(order.id!)
+                            : Future.value([]),
+                        builder: (context, snap) {
+                          if (snap.connectionState == ConnectionState.waiting) {
+                            return _buildCompactRow('Products', 'Loading...');
+                          }
+                          final items = snap.data ?? [];
+                          if (items.isEmpty) {
+                            return _buildCompactRow('Products', 'None');
+                          }
+                          final lines = items.map((i) => '${i.productName} x${i.quantity}').join(', ');
+                          return _buildCompactRow('Products', lines);
+                        },
+                      ),
+                      const Divider(height: 16),
+                      _buildCompactRow('Due Date', _formatDateString(order.dueDate)),
+                      _buildCompactRow('Dispatch Date', _formatDateString(order.dispatchDate)),
+                      _buildCompactRow('Days After Dispatch', '${order.afterDispatchDays}'),
+                      const Divider(height: 16),
+                      _buildCompactRow('Batch No.', order.batchNo ?? 'N/A'),
+                      _buildCompactRow('Batch Details', order.batchDetails ?? 'N/A'),
+                      const Divider(height: 16),
+                      _buildCompactRow('Shipped At', _formatDateString(order.shippedAt)),
+                    ],
+                  ),
+                ),
+              ),
+              // Footer
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompactRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDetailRow(
     String label,
     String value, {
@@ -457,45 +656,40 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Order History',
-          style: TextStyle(color: Color.fromARGB(255, 204, 201, 201)),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Order History',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'Completed Transactions',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
+              ),
+            ),
+          ],
         ),
-        leading: BackToDashboardButton(),
+        leading: const BackToDashboardButton(),
         centerTitle: false,
-        elevation: 4,
-        // glossy gradient header
+        elevation: 0,
+        toolbarHeight: 76,
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.grey.shade900, Colors.grey.shade800],
+              colors: [Colors.blue.shade800, Colors.blue.shade600],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-          ),
-          child: Stack(
-            children: [
-              // subtle glossy highlight
-              Positioned(
-                top: 6,
-                left: 12,
-                right: -40,
-                child: Container(
-                  height: 28,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.white.withOpacity(0.12),
-                        Colors.white.withOpacity(0.02),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),
@@ -603,20 +797,74 @@ class _HistoryPageState extends State<HistoryPage> {
                                       _onSearchChanged('');
                                     },
                                     child: Container(
-                                      width: 36,
-                                      height: 36,
+                                      width: 28,
+                                      height: 28,
                                       decoration: BoxDecoration(
                                         color: Colors.grey.shade100,
                                         shape: BoxShape.circle,
                                       ),
                                       child: Icon(
                                         Icons.clear,
-                                        size: 18,
+                                        size: 16,
                                         color: Colors.grey[700],
                                       ),
                                     ),
                                   ),
                                 ),
+                              // Sort dropdown
+                              PopupMenuButton<String>(
+                                icon: Icon(Icons.sort, size: 20, color: Colors.grey[600]),
+                                tooltip: 'Sort',
+                                onSelected: (value) {
+                                  setState(() {
+                                    _sortBy = value;
+                                    _sortOrders();
+                                  });
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    value: 'name_asc',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.arrow_upward, size: 16, color: _sortBy == 'name_asc' ? Colors.blue : Colors.grey),
+                                        const SizedBox(width: 8),
+                                        Text('Name A-Z', style: TextStyle(fontWeight: _sortBy == 'name_asc' ? FontWeight.bold : FontWeight.normal)),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'name_desc',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.arrow_downward, size: 16, color: _sortBy == 'name_desc' ? Colors.blue : Colors.grey),
+                                        const SizedBox(width: 8),
+                                        Text('Name Z-A', style: TextStyle(fontWeight: _sortBy == 'name_desc' ? FontWeight.bold : FontWeight.normal)),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuDivider(),
+                                  PopupMenuItem(
+                                    value: 'date_desc',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.arrow_downward, size: 16, color: _sortBy == 'date_desc' ? Colors.blue : Colors.grey),
+                                        const SizedBox(width: 8),
+                                        Text('Newest First', style: TextStyle(fontWeight: _sortBy == 'date_desc' ? FontWeight.bold : FontWeight.normal)),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'date_asc',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.arrow_upward, size: 16, color: _sortBy == 'date_asc' ? Colors.blue : Colors.grey),
+                                        const SizedBox(width: 8),
+                                        Text('Oldest First', style: TextStyle(fontWeight: _sortBy == 'date_asc' ? FontWeight.bold : FontWeight.normal)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -668,6 +916,8 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget _buildHistoryCard(OrderHistory order) {
     final isPending = order.pendingAmount > 0;
     final statusColor = isPending ? Colors.orange : Colors.green;
+    final isProduction = widget.role == UserRole.production;
+    final themeColor = isProduction ? Colors.purple : Colors.blue;
 
     String initials() {
       final name = order.clientName ?? order.orderNumber ?? '';
@@ -679,68 +929,70 @@ class _HistoryPageState extends State<HistoryPage> {
 
     return WireCard(
       title: order.orderNumber ?? 'Order #${order.id}',
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 22,
-              backgroundColor: Colors.blue.shade50,
-              child: Text(
-                initials(),
-                style: TextStyle(
-                  color: Colors.blue.shade700,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                order.clientName ?? '-',
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
+      child: InkWell(
+        onTap: () => _showOrderDetails(order),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: themeColor.shade50,
+                child: Text(
+                  initials(),
+                  style: TextStyle(
+                    color: themeColor.shade700,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
                   ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      order.clientName ?? '-',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      'Shipped: ${_formatDateString(order.shippedAt)}',
+                      style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              // Show payment status for non-production, batch info for production
+              if (!isProduction)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    isPending ? 'Payment Pending' : 'Paid',
+                    isPending ? 'Pending' : 'Paid',
                     style: TextStyle(
                       color: statusColor.shade700,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 9,
                     ),
                   ),
+                )
+              else if (order.batchNo != null)
+                Text(
+                  order.batchNo!,
+                  style: TextStyle(fontSize: 10, color: Colors.purple[400], fontWeight: FontWeight.w500),
                 ),
-                const SizedBox(height: 8),
-                IconButton(
-                  tooltip: 'View Details',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: Icon(
-                    Icons.remove_red_eye_outlined,
-                    size: 20,
-                    color: Theme.of(context).primaryColor,
-                  ),
-                  onPressed: () => _showOrderDetails(order),
-                ),
-              ],
-            ),
-          ],
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, size: 16, color: Colors.grey[400]),
+            ],
+          ),
         ),
       ),
     );

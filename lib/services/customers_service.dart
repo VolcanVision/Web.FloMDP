@@ -18,19 +18,19 @@ class CustomersService extends BaseSupabaseService {
   Future<Customer?> create(Customer customer) async {
     lastError = null;
     final base = customer.toMap()..remove('id');
-    Future<Customer?> _try(Map<String, dynamic> data) async {
+    Future<Customer?> _attemptInsert(Map<String, dynamic> data) async {
       final res = await client.from('customers').insert(data).select().single();
       return Customer.fromMap(res);
     }
 
     try {
-      return await _try({...base});
+      return await _attemptInsert({...base});
     } on PostgrestException catch (e) {
       final msg = e.message;
       if (msg.contains('is_active') || e.code == 'PGRST204') {
         final retry = {...base}..remove('is_active');
         try {
-          return await _try(retry);
+          return await _attemptInsert(retry);
         } catch (_) {}
       }
       lastError = e.message;

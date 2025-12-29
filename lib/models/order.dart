@@ -19,6 +19,8 @@ class Order {
   final DateTime? updatedAt;
   final double totalAmount;
 
+  final String? location;
+
   Order({
     this.id,
     this.orderNumber,
@@ -39,6 +41,7 @@ class Order {
     this.createdAt,
     this.updatedAt,
     this.totalAmount = 0.0,
+    this.location,
   });
 
   double get pendingAmount => totalAmount - advancePaid;
@@ -62,6 +65,7 @@ class Order {
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
       'total_amount': totalAmount,
+      'location': location,
     };
     // Only include id if it's not null (for updates, not inserts)
     if (id != null) {
@@ -93,6 +97,52 @@ class Order {
       updatedAt:
           map['updated_at'] != null ? DateTime.parse(map['updated_at']) : null,
       totalAmount: map['total_amount']?.toDouble() ?? 0.0,
+      location: map['location'],
+    );
+  }
+  Order copyWith({
+    int? id,
+    String? orderNumber,
+    int? customerId,
+    String? clientName,
+    double? advancePaid,
+    String? dueDate,
+    String? dispatchDate,
+    bool? isAdvancePaid,
+    String? advancePaymentDate,
+    int? afterDispatchDays,
+    String? finalDueDate,
+    String? finalPaymentDate,
+    String? orderStatus,
+    String? paymentStatus,
+    String? productionStatus,
+    int? createdBy,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    double? totalAmount,
+    String? location,
+  }) {
+    return Order(
+      id: id ?? this.id,
+      orderNumber: orderNumber ?? this.orderNumber,
+      customerId: customerId ?? this.customerId,
+      clientName: clientName ?? this.clientName,
+      advancePaid: advancePaid ?? this.advancePaid,
+      dueDate: dueDate ?? this.dueDate,
+      dispatchDate: dispatchDate ?? this.dispatchDate,
+      isAdvancePaid: isAdvancePaid ?? this.isAdvancePaid,
+      advancePaymentDate: advancePaymentDate ?? this.advancePaymentDate,
+      afterDispatchDays: afterDispatchDays ?? this.afterDispatchDays,
+      finalDueDate: finalDueDate ?? this.finalDueDate,
+      finalPaymentDate: finalPaymentDate ?? this.finalPaymentDate,
+      orderStatus: orderStatus ?? this.orderStatus,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      productionStatus: productionStatus ?? this.productionStatus,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      totalAmount: totalAmount ?? this.totalAmount,
+      location: location ?? this.location,
     );
   }
 }

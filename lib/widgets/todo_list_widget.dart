@@ -298,9 +298,11 @@ class _TodoListWidgetState extends State<TodoListWidget> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final taskDate = DateTime(todo.date.year, todo.date.month, todo.date.day);
-  final isOverdue = taskDate.isBefore(today) && !todo.isCompleted;
-  // Use pastel colors for the slim left accent bar and date/icon
-  final dateColor = isOverdue ? PastelColors.pastelRed : PastelColors.pastelBlueGrey;
+    final isOverdue = taskDate.isBefore(today) && !todo.isCompleted;
+    // Use pastel colors for the slim left accent bar and date/icon
+    final dateColor =
+        isOverdue ? PastelColors.pastelRed : PastelColors.pastelBlueGrey;
+    final accentColor = _getCategoryColor(todo.category);
 
     // choose sizes for dialog (smaller) vs inline dashboard
     final double titleSize = isDialog ? 12.0 : 13.0;
@@ -310,7 +312,7 @@ class _TodoListWidgetState extends State<TodoListWidget> {
         isDialog
             ? const EdgeInsets.symmetric(horizontal: 6, vertical: 6)
             : const EdgeInsets.symmetric(horizontal: 8, vertical: 8);
-    final double accentHeight = isDialog ? 36.0 : 44.0;
+    final double accentHeight = isDialog ? 44.0 : 56.0;
 
     // Minimal todo row with slim accent bar, checkbox, content, and date/status pill
     return Container(
@@ -355,13 +357,67 @@ class _TodoListWidgetState extends State<TodoListWidget> {
               },
             ),
           ),
-          SizedBox(width: isDialog ? 6 : 8),
+          SizedBox(width: isDialog ? 4 : 6),
           // content
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Assignment flow
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _getRoleColor(todo.assignedBy).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        // Show the actual assigner role (assignedBy), capitalize first letter
+                        todo.assignedBy != null && todo.assignedBy!.isNotEmpty
+                            ? todo.assignedBy![0].toUpperCase() + todo.assignedBy!.substring(1)
+                            : 'Unknown',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: _getRoleColor(todo.assignedBy),
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 2),
+                      child:
+                          Icon(Icons.arrow_forward, size: 8, color: Colors.grey),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: accentColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        _getCategoryName(todo.category),
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          color: accentColor,
+                        ),
+                      ),
+                    ),
+                    if (todo.isRecurring) ...[
+                      const SizedBox(width: 6),
+                      const Icon(Icons.repeat, size: 10, color: Colors.purple),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
                 Text(
                   todo.title,
                   style: TextStyle(
@@ -372,18 +428,16 @@ class _TodoListWidgetState extends State<TodoListWidget> {
                   ),
                 ),
                 if (todo.description.isNotEmpty) ...[
-                  SizedBox(height: isDialog ? 4 : 4),
+                  const SizedBox(height: 2),
                   Text(
                     todo.description,
                     style: TextStyle(
                       fontSize: descSize,
                       color: Colors.grey[700],
                     ),
-                    // When opened from "View All" (isDialog == true) show the full
-                    // description without truncation. Keep the inline dashboard
-                    // compact with a 2-line ellipsis.
-                    maxLines: isDialog ? null : 2,
-                    overflow: isDialog ? TextOverflow.visible : TextOverflow.ellipsis,
+                    maxLines: isDialog ? null : 1,
+                    overflow:
+                        isDialog ? TextOverflow.visible : TextOverflow.ellipsis,
                   ),
                 ],
               ],
@@ -421,6 +475,44 @@ class _TodoListWidgetState extends State<TodoListWidget> {
       ),
     );
   }
+
+  String _getCategoryName(TaskCategory category) {
+    switch (category) {
+      case TaskCategory.admin:
+        return 'Admin';
+      case TaskCategory.production:
+        return 'Production';
+      case TaskCategory.accounts:
+        return 'Accounts';
+      case TaskCategory.labTesting:
+        return 'Lab Testing';
+
+    }
+  }
+
+  Color _getCategoryColor(TaskCategory category) {
+    switch (category) {
+      case TaskCategory.admin:
+        return Colors.blue.shade700;
+      case TaskCategory.production:
+        return Colors.purple.shade700;
+      case TaskCategory.accounts:
+        return Colors.orange.shade700;
+      case TaskCategory.labTesting:
+        return Colors.teal.shade700;
+    }
+  }
+
+  Color _getRoleColor(String? role) {
+    if (role == null) return Colors.grey;
+    final r = role.toLowerCase();
+    if (r.contains('admin')) return Colors.blue.shade700;
+    if (r.contains('production')) return Colors.purple.shade700;
+    if (r.contains('account')) return Colors.orange.shade700;
+    if (r.contains('lab')) return Colors.teal.shade700;
+    return Colors.grey.shade700;
+  }
+
 
   String _formatDate(DateTime date) {
     final now = DateTime.now();

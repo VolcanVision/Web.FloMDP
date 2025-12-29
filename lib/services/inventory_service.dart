@@ -22,7 +22,7 @@ class InventoryService extends BaseSupabaseService {
   Future<InventoryItem?> create(InventoryItem item) async {
     lastError = null;
     final base = item.toMap()..remove('id');
-    Future<InventoryItem?> _try(Map<String, dynamic> data) async {
+    Future<InventoryItem?> _attemptInsert(Map<String, dynamic> data) async {
       final res = await client
           .from('inventory_items')
           .insert(data)
@@ -32,7 +32,7 @@ class InventoryService extends BaseSupabaseService {
     }
 
     try {
-      return await _try({...base});
+      return await _attemptInsert({...base});
     } on PostgrestException catch (e) {
       final msg = e.message.toLowerCase();
       if (msg.contains('row-level security') || msg.contains('rls')) {
@@ -44,7 +44,7 @@ class InventoryService extends BaseSupabaseService {
           ..remove('created_at')
           ..remove('updated_at');
         try {
-          return await _try(retry);
+          return await _attemptInsert(retry);
         } catch (_) {}
       }
       lastError = e.message;

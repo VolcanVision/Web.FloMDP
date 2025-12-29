@@ -22,11 +22,105 @@ class ShipmentService extends BaseSupabaseService {
     }
   }
 
+  Future<bool> update(Shipment shipment) async {
+    lastError = null;
+    try {
+      if (shipment.id == null) {
+        lastError = 'Shipment ID is required for update';
+        return false;
+      }
+      final data = shipment.toMap()
+        ..remove('id')
+        ..remove('created_at');
+      
+      await client.from('shipments').update(data).eq('id', shipment.id!);
+      return true;
+    } catch (e) {
+      lastError = 'Failed to update shipment: $e';
+      return false;
+    }
+  }
+
+  Future<Shipment?> getByOrderId(int orderId) async {
+    lastError = null;
+    try {
+      final res = await client
+          .from('shipments')
+          .select()
+          .eq('order_id', orderId)
+          .maybeSingle();
+      if (res == null) return null;
+      return Shipment.fromMap(res);
+    } catch (e) {
+      lastError = 'Failed to get shipment by order ID: $e';
+      return null;
+    }
+  }
+
+  Future<List<Shipment>> getByStatus(String status) async {
+    lastError = null;
+    try {
+      final res = await client
+          .from('shipments')
+          .select()
+          .eq('status', status)
+          .order('shipped_at', ascending: false);
+      return (res as List).map((e) => Shipment.fromMap(e)).toList();
+    } catch (e) {
+      lastError = 'Failed to get shipments by status: $e';
+      return [];
+    }
+  }
+
+  Future<bool> markDelivered(int shipmentId) async {
+    lastError = null;
+    try {
+      await client.from('shipments').update({
+        'status': 'delivered',
+        'delivered_at': DateTime.now().toIso8601String(),
+      }).eq('id', shipmentId);
+      return true;
+    } catch (e) {
+      lastError = 'Failed to mark as delivered: $e';
+      return false;
+    }
+  }
+
+  Future<bool> undoDelivered(int shipmentId) async {
+    lastError = null;
+    try {
+      await client.from('shipments').update({
+        'status': 'in_transit',
+        'delivered_at': null,
+      }).eq('id', shipmentId);
+      return true;
+    } catch (e) {
+      lastError = 'Failed to undo delivery: $e';
+      return false;
+    }
+  }
+
+  Future<List<Shipment>> getAllShipments() async {
+    lastError = null;
+    try {
+      final res = await client
+          .from('shipments')
+          .select()
+          .order('shipped_at', ascending: false);
+      return (res as List).map((e) => Shipment.fromMap(e)).toList();
+    } catch (e) {
+      lastError = 'Failed to get all shipments: $e';
+      return [];
+    }
+  }
+
   Future<List<OrderHistory>> getOrderHistory() async {
     try {
+      // First try the view, but filter for delivered only
       final res = await client
           .from('v_order_history')
           .select()
+          .eq('status', 'delivered')
           .order('shipped_at', ascending: false);
 
       final list = (res as List).map((e) => OrderHistory.fromMap(e)).toList();
@@ -39,9 +133,11 @@ class ShipmentService extends BaseSupabaseService {
       // to keep the UI working.
       lastError = 'Failed to fetch v_order_history: $e';
       try {
+        // ONLY fetch delivered shipments for history
         final shipments = await client
             .from('shipments')
             .select()
+            .eq('status', 'delivered')
             .order('shipped_at', ascending: false)
             .limit(30);
 
@@ -179,6 +275,8 @@ class ShipmentService extends BaseSupabaseService {
               orderNumber: orderMap != null ? orderMap['order_number'] : null,
               clientName: orderMap != null ? orderMap['client_name'] : null,
               productsList: productsList,
+              destination: orderMap != null ? (orderMap['destination'] ?? orderMap['delivery_location']) : null,
+              status: s['status'], // Map shipment status
               dueDate: orderMap != null ? orderMap['due_date'] : null,
               dispatchDate: orderMap != null ? orderMap['dispatch_date'] : null,
               totalAmount: totalAmount,
@@ -210,7 +308,7 @@ class ShipmentService extends BaseSupabaseService {
                   orderMap?['batch_details'] ??
                   orderMap?['notes'],
               shippedAt:
-                  s['shipped_at'] != null ? s['shipped_at'].toString() : null,
+                  s['shipped_at']?.toString(),
               paymentDueDate:
                   orderMap != null ? orderMap['payment_due_date'] : null,
               pendingAmount: (totalAmount - advancePaid),
@@ -218,6 +316,10 @@ class ShipmentService extends BaseSupabaseService {
                   orderMap != null && orderMap['created_at'] != null
                       ? DateTime.tryParse(orderMap['created_at'].toString())
                       : null,
+              shippingCompany: s['shipping_company']?.toString(),
+              vehicleDetails: s['vehicle_details']?.toString(),
+              driverContact: s['driver_contact_number']?.toString(),
+              shipmentIncharge: s['shipment_incharge']?.toString(),
             );
 
             fallback.add(oh);

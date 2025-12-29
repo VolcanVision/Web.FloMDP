@@ -495,98 +495,96 @@ class _AdminDashboardState extends State<AdminDashboard> {
             borderRadius: BorderRadius.circular(16),
           ),
           elevation: 0,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Recent Orders',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
+          child: InkWell(
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                '/admin/new-order',
+                arguments: {'homeDashboard': '/admin/dashboard'},
+              );
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Recent Orders',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
-                    OutlinedButton.icon(
-                      onPressed: () => _showOrdersDialog(context),
-                      icon: const Icon(Icons.list, size: 16),
-                      label: const Text('View All'),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: Colors.grey.shade200),
-                        foregroundColor: Colors.blueGrey[800],
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        textStyle: const TextStyle(fontSize: 12),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 20,
+                        color: Colors.grey[400],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                // sample order or real ones
-                if (_orders.isEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: Colors.grey[200],
-                          child: Icon(Icons.person, color: Colors.grey[700]),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Acme Corporation',
-                                style: TextStyle(fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Plastic Bottles • Qty: 100',
-                                style: TextStyle(color: Colors.grey[700]),
-                              ),
-                            ],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // sample order or real ones
+                  if (_orders.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: Colors.grey[200],
+                            child: Icon(Icons.person, color: Colors.grey[700]),
                           ),
-                        ),
-                        // Unpaid badge: white background with red border & red text (no shadow)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.red[600]!),
-                          ),
-                          child: Text(
-                            'UNPAID',
-                            style: TextStyle(
-                              color: Colors.red[600],
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Acme Corporation',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Plastic Bottles • Qty: 100',
+                                  style: TextStyle(color: Colors.grey[700]),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  ..._orders.take(3).map((o) => _buildOrderCard(o)).toList(),
-              ],
+                          // Unpaid badge: white background with red border & red text (no shadow)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.red[600]!),
+                            ),
+                            child: Text(
+                              'UNPAID',
+                              style: TextStyle(
+                                color: Colors.red[600],
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ..._orders.take(3).map((o) => _buildOrderCard(o)),
+                ],
+              ),
             ),
           ),
         ),
@@ -666,14 +664,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                '\u20b9${order.totalAmount.toStringAsFixed(2)}',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: Colors.blue.shade700,
-                ),
-              ),
               const SizedBox(height: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -716,6 +706,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 'Active Orders',
                 _activeOrdersCount,
                 Colors.blue.shade700,
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/admin/new-order',
+                    arguments: {'homeDashboard': '/admin/dashboard'},
+                  );
+                },
               ),
             ),
             SizedBox(
@@ -724,11 +721,29 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 'Purchases',
                 _purchasesCount,
                 Colors.teal.shade600,
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/accounts/purchase',
+                    arguments: {'homeDashboard': '/admin/dashboard'},
+                  );
+                },
               ),
             ),
             SizedBox(
               width: cardWidth,
-              child: _infoCard('Sales', _salesCount, Colors.indigo.shade600),
+              child: _infoCard(
+                'Sales',
+                _salesCount,
+                Colors.indigo.shade600,
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/admin/history',
+                    arguments: {'homeDashboard': '/admin/dashboard'},
+                  );
+                },
+              ),
             ),
             SizedBox(
               width: cardWidth,
@@ -736,6 +751,13 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 'Product Loss',
                 _productLossCount,
                 Colors.red.shade600,
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/production/loss',
+                    arguments: {'homeDashboard': '/admin/dashboard'},
+                  );
+                },
               ),
             ),
           ],
@@ -744,24 +766,33 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  Widget _infoCard(String title, int count, Color color) {
+  Widget _infoCard(
+    String title,
+    int count,
+    Color color, {
+    VoidCallback? onTap,
+  }) {
     // Polished card with subtle gradient background, shadow and icon
-      return ClipRRect(
+    return Container(
+      decoration: BoxDecoration(
+        // stronger tint so card color is more visible
+        color: color.withOpacity(0.14),
         borderRadius: BorderRadius.circular(12),
-        child: Container(
-          decoration: BoxDecoration(
-            // stronger tint so card color is more visible
-            color: color.withOpacity(0.14),
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.06),
-                blurRadius: 10,
-                offset: Offset(0, 6),
-              ),
-            ],
-            border: Border.all(color: color.withOpacity(0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: Offset(0, 6),
           ),
+        ],
+        border: Border.all(color: color.withOpacity(0.12)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias, // To prevent ripple overflow
+        child: InkWell(
+          onTap: onTap,
           child: Stack(
             children: [
               // glossy highlight stripe (subtle, does not fade the whole card)
@@ -775,7 +806,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     height: 36,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Colors.white.withOpacity(0.28), Colors.white.withOpacity(0.0)],
+                        colors: [
+                          Colors.white.withOpacity(0.28),
+                          Colors.white.withOpacity(0.0),
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -786,44 +820,50 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ),
               // content
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12),
-                child: LayoutBuilder(builder: (context, constraints) {
-                  final isNarrow = constraints.maxWidth < 200;
-                  return Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        count.toString(),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: isNarrow ? 20 : 28,
-                          fontWeight: FontWeight.bold,
-                          color: color,
-                          shadows: [
-                            Shadow(color: Colors.black.withOpacity(0.06), blurRadius: 2, offset: Offset(0, 1)),
-                          ],
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14.0,
+                  vertical: 12,
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isNarrow = constraints.maxWidth < 200;
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          count.toString(),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: isNarrow ? 20 : 28,
+                            fontWeight: FontWeight.bold,
+                            color: color,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        title,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: isNarrow ? 12 : 13,
-                          color: Colors.grey[900],
-                          fontWeight: FontWeight.w700,
+                        SizedBox(height: 4),
+                        Text(
+                          title,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: isNarrow ? 12 : 13,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blueGrey[800],
+                          ),
                         ),
-                      ),
-                    ],
-                  );
-                }),
+                      ],
+                    );
+                  },
+                ),
               ),
             ],
           ),
         ),
-      );
+      ),
+    );
   }
+
 
   Color _getPaymentStatusColor(Order order) {
     // Return softer pastel colors for the left accent bars and status tint.

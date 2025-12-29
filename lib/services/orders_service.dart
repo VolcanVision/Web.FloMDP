@@ -44,8 +44,8 @@ class OrdersService {
   final SupabaseService _supabaseService = SupabaseService();
 
   // In-memory fallback for web when Supabase isn't available
-  List<Order> _ordersCache = [];
-  List<Customer> _customersCache = [];
+  final List<Order> _ordersCache = [];
+  final List<Customer> _customersCache = [];
 
   // Always prefer Supabase, use in-memory cache as fallback on web
   bool get useSupabase => !kIsWeb || _supabaseService.isAuthenticated;

@@ -18,7 +18,22 @@ class PurchasesService extends BaseSupabaseService {
     }
   }
 
+  Future<Purchase?> fetchById(int id) async {
+    try {
+      final res = await client
+          .from('purchases')
+          .select()
+          .eq('id', id)
+          .single();
+      return Purchase.fromMap(res);
+    } catch (e) {
+      lastError = 'Fetch by ID failed: $e';
+      return null;
+    }
+  }
+
   Future<Purchase?> create(Purchase purchase) async {
+
     lastError = null;
     final base = purchase.toMap()..remove('id');
 

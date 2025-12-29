@@ -313,240 +313,391 @@ class _DispatchPageState extends State<DispatchPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dispatch Management'),
-        leading: BackToDashboardButton(),
-        backgroundColor: Colors.indigo[700],
-      ),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : DefaultTabController(
-                length: 2,
-                child: Column(
-                  children: [
-                    Container(
-                      color: Colors.indigo[50],
-                      child: const TabBar(
-                        indicatorColor: Colors.indigo,
-                        labelColor: Colors.indigo,
-                        unselectedLabelColor: Colors.grey,
-                        tabs: [
-                          Tab(icon: Icon(Icons.build), text: 'In Production'),
-                          Tab(icon: Icon(Icons.check_circle), text: 'Ready'),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          // In Production Tab
-                          Padding(
-                            padding: const EdgeInsets.all(8),
-                            child:
-                                _inProductionOrders.isEmpty
-                                    ? Center(
-                                      child: Text(
-                                        'No orders in production',
-                                        style: TextStyle(
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                    )
-                                    : ListView.builder(
-                                      itemCount: _inProductionOrders.length,
-                                      itemBuilder:
-                                          (context, idx) => _buildOrderCard(
-                                            _inProductionOrders[idx],
-                                            isProduction: true,
-                                          ),
-                                    ),
-                          ),
-                          // Ready Tab
-                          Padding(
-                            padding: const EdgeInsets.all(8),
-                            child:
-                                _readyOrders.isEmpty
-                                    ? Center(
-                                      child: Text(
-                                        'No orders ready',
-                                        style: TextStyle(
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                    )
-                                    : ListView.builder(
-                                      itemCount: _readyOrders.length,
-                                      itemBuilder:
-                                          (context, idx) => _buildOrderCard(
-                                            _readyOrders[idx],
-                                            isProduction: false,
-                                          ),
-                                    ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        toolbarHeight: 76,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: const BackToDashboardButton(),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue.shade800, Colors.blue.shade600],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Dispatch Management',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Manage production batches',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
               ),
+            ),
+          ],
+        ),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : DefaultTabController(
+              length: 2,
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade800,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: TabBar(
+                      indicator: BoxDecoration(
+                        color: Colors.blue.shade300,
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      labelColor: Colors.blue.shade900,
+                      unselectedLabelColor: Colors.white70,
+                      labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                      tabs: const [
+                        Tab(text: 'In Production'),
+                        Tab(text: 'Ready for Dispatch'),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        // In Production Tab
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _inProductionOrders.isEmpty
+                              ? _buildEmptyState('No orders in production', Icons.build_circle_outlined)
+                              : ListView.separated(
+                                  itemCount: _inProductionOrders.length,
+                                  separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+                                  itemBuilder: (context, idx) => _buildOrderCard(
+                                    _inProductionOrders[idx],
+                                    isProduction: true,
+                                  ),
+                                ),
+                        ),
+                        // Ready Tab
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _readyOrders.isEmpty
+                              ? _buildEmptyState('No orders ready', Icons.check_circle_outline)
+                              : ListView.separated(
+                                  itemCount: _readyOrders.length,
+                                  separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+                                  itemBuilder: (context, idx) => _buildOrderCard(
+                                    _readyOrders[idx],
+                                    isProduction: false,
+                                  ),
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildEmptyState(String message, IconData icon) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 64, color: Colors.grey[300]),
+          const SizedBox(height: 16),
+          Text(
+            message,
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildOrderCard(Order order, {required bool isProduction}) {
-    return Card(
-      elevation: 4,
-      margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: isProduction ? Colors.orange[50] : Colors.green[50],
+    final statusColor = isProduction ? Colors.orange : Colors.green;
+    
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: statusColor.withOpacity(0.15),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            // Colored left strip
+            Container(
+              width: 5,
+              color: statusColor,
+            ),
+            // Main content
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.03),
+                ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         onTap: () {
+          // Keep existing dialog logic but maybe style it later? 
+          // For now, focusing on the card UI as requested.
           showDialog(
             context: context,
-            builder:
-                (context) => AlertDialog(
-                  title: Text(order.orderNumber ?? 'Order #${order.id}'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Client: ${order.clientName ?? 'N/A'}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 6),
-                      FutureBuilder<List<OrderItem>>(
-                        future: OrdersService.instance.getOrderItemsForOrder(
-                          order.id!,
-                        ),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Text(
-                              'Products: Loading...',
-                              style: TextStyle(color: Colors.grey),
-                            );
-                          }
-                          final items = snapshot.data ?? [];
-                          if (items.isEmpty) {
-                            return const Text(
-                              'Products: None',
-                              style: TextStyle(color: Colors.grey),
-                            );
-                          }
-                          return Text(
-                            'Products: ${items.map((i) => '${i.productName ?? ''} (Qty: ${i.quantity ?? ''})').join(', ')}',
-                            style: const TextStyle(color: Colors.grey),
-                          );
-                        },
-                      ),
-                      Text('Due Date: ${order.dueDate}'),
-                      if (order.dispatchDate != null)
-                        Text('Dispatch Date: ${order.dispatchDate}'),
-                      Text(
-                        'Total: \u20b9${order.totalAmount.toStringAsFixed(2)}',
-                      ),
-                    ],
+            builder: (context) => AlertDialog(
+              title: Text(order.orderNumber ?? 'Order #${order.id}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Client: ${order.clientName ?? 'N/A'}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  FutureBuilder<List<OrderItem>>(
+                    future: OrdersService.instance.getOrderItemsForOrder(order.id!),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) return const Text('Loading products...');
+                      final items = snapshot.data ?? [];
+                      if (items.isEmpty) return const Text('No products');
+                      return Text('Products: ${items.map((i) => '${i.productName} (${i.quantity})').join(', ')}');
+                    },
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Close'),
-                    ),
-                  ],
-                ),
+                  const SizedBox(height: 6),
+                  Text('Due Date: ${order.dueDate}'),
+                  if (order.dispatchDate != null) Text('Dispatch Date: ${order.dispatchDate}'),
+                ],
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+              ],
+            ),
           );
         },
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.05),
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(12),
+                ),
+              ),
+              child: Row(
                 children: [
-                  Icon(
-                    isProduction ? Icons.build : Icons.check_circle,
-                    color:
-                        isProduction ? Colors.orange[700] : Colors.green[700],
+                  Container(
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isProduction ? Icons.build : Icons.check_circle,
+                      color: statusColor,
+                      size: 16,
+                    ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      order.orderNumber ?? 'Order #${order.id}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          order.orderNumber ?? 'Order #${order.id}',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            color: Colors.blueGrey[800],
+                          ),
+                        ),
+                        Text(
+                          order.clientName ?? 'Unknown Client',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.blueGrey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isProduction)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: statusColor.withOpacity(0.3)),
+                      ),
+                      child: Text(
+                        'In Production',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: statusColor),
                       ),
                     ),
+                ],
+              ),
+            ),
+            
+            // Body
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.calendar_today, size: 12, color: Colors.grey[400]),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Due: ${_formatDate(order.dueDate)}',
+                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      ),
+                      if (order.dispatchDate != null) ...[
+                        const SizedBox(width: 12),
+                        Icon(Icons.local_shipping_outlined, size: 12, color: Colors.grey[400]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Dispatch: ${_formatDate(order.dispatchDate!)}',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  // Products Preview
+                  FutureBuilder<List<OrderItem>>(
+                    future: OrdersService.instance.getOrderItemsForOrder(order.id!),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return Container(
+                          height: 20, 
+                          width: 100, 
+                          decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(4)),
+                        );
+                      }
+                      final items = snapshot.data!;
+                      if (items.isEmpty) return const Text('No products', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey));
+                      
+                      return Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: items.take(3).map((item) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey[50],
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.blueGrey[100]!),
+                          ),
+                          child: Text(
+                            '${item.productName} (${item.quantity})',
+                            style: TextStyle(fontSize: 12, color: Colors.blueGrey[700]),
+                          ),
+                        )).toList()
+                          ..addAll(items.length > 3 ? [
+                             Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              child: Text('+${items.length - 3} more', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            )
+                          ] : []),
+                      );
+                    },
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Action Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: isProduction
+                        ? ElevatedButton.icon(
+                            icon: const Icon(Icons.arrow_forward, size: 16),
+                            label: const Text('Move to Ready'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue.shade600,
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            onPressed: () => _showMoveToReadyDialog(order),
+                          )
+                        : Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.hourglass_empty, size: 18, color: Colors.orange.shade800),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Waiting for Dispatch',
+                                  style: TextStyle(
+                                    color: Colors.orange.shade900,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                order.clientName ?? 'N/A',
-                style: const TextStyle(fontSize: 15),
-              ),
-              FutureBuilder<List<OrderItem>>(
-                future: OrdersService.instance.getOrderItemsForOrder(order.id!),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Text(
-                      'Products: Loading...',
-                      style: TextStyle(color: Colors.grey),
-                    );
-                  }
-                  final items = snapshot.data ?? [];
-                  if (items.isEmpty) {
-                    return const Text(
-                      'Products: None',
-                      style: TextStyle(color: Colors.grey),
-                    );
-                  }
-                  return Text(
-                    'Products: ${items.map((i) => '${i.productName ?? ''} (Qty: ${i.quantity ?? ''})').join(', ')}',
-                    style: const TextStyle(color: Colors.grey),
-                  );
-                },
-              ),
-              Text('Due Date: ${order.dueDate}'),
-              if (order.dispatchDate != null)
-                Text('Dispatch Date: ${order.dispatchDate}'),
-              Text('Total: \u20b9${order.totalAmount.toStringAsFixed(2)}'),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  if (isProduction)
-                    Tooltip(
-                      message: 'Move order to Ready',
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.check_circle),
-                        label: const Text('Move to Ready'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () => _showMoveToReadyDialog(order),
-                      ),
-                    )
-                  else
-                    Tooltip(
-                      message: 'Ship this order',
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.local_shipping),
-                        label: const Text('Ship Order'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () => _shipOrder(order),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
+        ),
+      ), // InkWell
+              ), // Container Bg
+            ), // Expanded
+          ],
         ),
       ),
     );
+  }
+
+  String _formatDate(String date) {
+    try {
+      final d = DateTime.parse(date);
+      // Simple formatter, or import intl. 
+      // Using basic splits to match existing style if intl not available, but usually it is.
+      // The file doesn't import intl but I can check.
+      // Wait, I should check imports. 
+      return '${d.day}/${d.month}/${d.year}';
+    } catch (e) {
+      return date;
+    }
   }
 }

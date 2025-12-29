@@ -7,18 +7,39 @@ class BackToDashboardButton extends StatelessWidget {
     final route = ModalRoute.of(context);
     final name = route?.settings.name ?? '';
     final args = route?.settings.arguments;
+    
+    print('BackToDashboardButton._resolveDashboardRoute: name="$name", args=$args, argsType=${args.runtimeType}');
+    
     // Always prefer an explicit homeDashboard passed along the nav stack
     if (args is Map && args['homeDashboard'] is String) {
-      return args['homeDashboard'] as String;
+      final home = args['homeDashboard'] as String;
+      print('BackToDashboardButton: Using homeDashboard from args: "$home"');
+      return home;
     }
-    if (name.startsWith('/admin/')) return '/admin/dashboard';
-    if (name.startsWith('/production/')) return '/production/dashboard';
-    if (name.startsWith('/accounts/')) return '/accounts/dashboard';
-    // Fallback: try to infer from common pages
-    if (name.contains('admin')) return '/admin/dashboard';
-    if (name.contains('production')) return '/production/dashboard';
-    if (name.contains('accounts')) return '/accounts/dashboard';
-    return '/login';
+    
+    String resolved;
+    if (name.startsWith('/admin/')) {
+      resolved = '/admin/dashboard';
+    } else if (name.startsWith('/production/')) {
+      resolved = '/production/dashboard';
+    } else if (name.startsWith('/accounts/')) {
+      resolved = '/accounts/dashboard';
+    } else if (name.startsWith('/lab_testing/')) {
+      resolved = '/lab_testing/dashboard';
+    } else if (name.contains('admin')) {
+      resolved = '/admin/dashboard';
+    } else if (name.contains('production')) {
+      resolved = '/production/dashboard';
+    } else if (name.contains('accounts')) {
+      resolved = '/accounts/dashboard';
+    } else if (name.contains('lab_testing')) {
+      resolved = '/lab_testing/dashboard';
+    } else {
+      resolved = '/login';
+    }
+    
+    print('BackToDashboardButton: No homeDashboard in args, resolved by route prefix to: "$resolved"');
+    return resolved;
   }
 
   @override
@@ -28,19 +49,26 @@ class BackToDashboardButton extends StatelessWidget {
       tooltip: 'Back to Dashboard',
       onPressed: () {
         final route = _resolveDashboardRoute(context);
-        // Try to pop back to an existing instance of the desired dashboard if it's
-        // already in the navigator stack (keeps navigation natural). Otherwise
-        // replace stack and push the dashboard as a fresh route.
+        print('BackToDashboardButton: Target route: "$route"');
+        
+        // Print the full route stack for debugging
+        print('BackToDashboardButton: Scanning navigator stack...');
+        
         bool found = false;
         Navigator.popUntil(context, (r) {
-          if (r.settings.name == route) {
+           final name = r.settings.name;
+           final rArgs = r.settings.arguments;
+           print('BackToDashboardButton: Stack route: "$name", args: $rArgs');
+          if (name == route) {
             found = true;
+            print('BackToDashboardButton: MATCH FOUND, stopping pop.');
             return true;
           }
           return false;
         });
 
         if (!found) {
+           print('BackToDashboardButton: Target not in stack. Pushing "$route" fresh.');
           Navigator.pushNamedAndRemoveUntil(
             context,
             route,

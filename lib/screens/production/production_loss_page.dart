@@ -60,7 +60,7 @@ class _ProductionLossPageState extends State<ProductionLossPage> {
   }
 
   Future<List<ProductionLoss>> fetchLosses() async {
-    final supabase = await SupabaseService().client;
+    final supabase = SupabaseService().client;
     final response = await supabase
         .from('production_losses')
         .select()
@@ -75,358 +75,436 @@ class _ProductionLossPageState extends State<ProductionLossPage> {
   }
 
   void _showAddLossDialog() {
-    final _formKey = GlobalKey<FormState>();
-    DateTime _selectedDate = DateTime.now();
-    String _selectedShift = 'day';
-    final _supervisorController = TextEditingController();
-    final _operatorController = TextEditingController();
-    final _gradeNameController = TextEditingController();
-    final _quantityController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    DateTime selectedDate = DateTime.now();
+    String selectedShift = 'day';
+    final supervisorController = TextEditingController();
+    final operatorController = TextEditingController();
+    final gradeNameController = TextEditingController();
+    final quantityController = TextEditingController();
 
     showDialog(
       context: context,
-      builder:
-          (context) => Dialog(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.add, color: Colors.red),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Add Production Loss',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ],
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Gradient Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue.shade800, Colors.blue.shade600],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.add_circle_outline, color: Colors.white),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Add Production Loss',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                      tooltip: 'Close',
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Scrollable Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Date Input
+                        InkWell(
+                          onTap: () async {
+                            final date = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now(),
+                            );
+                            if (date != null && mounted) {
+                               // Simplification for dialog state
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Date',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.calendar_today),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                            ),
+                            child: Text(DateFormat('MMM dd, yyyy').format(selectedDate)),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.pop(context),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Shift Input
+                        DropdownButtonFormField<String>(
+                          value: selectedShift,
+                          decoration: const InputDecoration(
+                            labelText: 'Shift',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.access_time),
                           ),
-                        ],
-                      ),
-                      const Divider(height: 24),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.calendar_today),
-                        title: const Text('Date'),
-                        subtitle: Text(
-                          DateFormat('MMM dd, yyyy').format(_selectedDate),
+                          items: const [
+                            DropdownMenuItem(value: 'day', child: Text('Day')),
+                            DropdownMenuItem(value: 'night', child: Text('Night')),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) selectedShift = v;
+                          },
                         ),
-                        trailing: const Icon(Icons.edit),
-                        onTap: () async {
-                          final date = await showDatePicker(
-                            context: context,
-                            initialDate: _selectedDate,
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                          );
-                          if (date != null) {
-                            _selectedDate = date;
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: _selectedShift,
-                        decoration: const InputDecoration(
-                          labelText: 'Shift',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: const [
-                          DropdownMenuItem(value: 'day', child: Text('Day')),
-                          DropdownMenuItem(
-                            value: 'night',
-                            child: Text('Night'),
+                        const SizedBox(height: 16),
+                        
+                        TextFormField(
+                          controller: supervisorController,
+                          decoration: const InputDecoration(
+                            labelText: 'Supervisor',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.person_outline),
                           ),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) _selectedShift = v;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _supervisorController,
-                        decoration: const InputDecoration(
-                          labelText: 'Supervisor',
-                          border: OutlineInputBorder(),
+                          validator: (v) => v?.isEmpty == true ? 'Required' : null,
                         ),
-                        validator:
-                            (v) => v == null || v.isEmpty ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _operatorController,
-                        decoration: const InputDecoration(
-                          labelText: 'Operator',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator:
-                            (v) => v == null || v.isEmpty ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _gradeNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Grade Name',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator:
-                            (v) => v == null || v.isEmpty ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _quantityController,
-                        decoration: const InputDecoration(
-                          labelText: 'Quantity',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Required';
-                          if (double.tryParse(v) == null) return 'Invalid';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel'),
+                        const SizedBox(height: 16),
+                        
+                        TextFormField(
+                          controller: operatorController,
+                          decoration: const InputDecoration(
+                            labelText: 'Operator',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.engineering_outlined),
                           ),
-                          const SizedBox(width: 12),
-                          ElevatedButton(
-                            onPressed: () async {
-                              if (!_formKey.currentState!.validate()) return;
-                              final supabase = await SupabaseService().client;
-                              await supabase.from('production_losses').insert({
-                                'occurred_at': _selectedDate.toIso8601String(),
-                                'shift': _selectedShift,
-                                'supervisor': _supervisorController.text.trim(),
-                                'operator': _operatorController.text.trim(),
-                                'grade_name': _gradeNameController.text.trim(),
-                                'quantity': double.parse(
-                                  _quantityController.text,
-                                ),
-                              });
-                              if (!mounted) return;
-                              Navigator.pop(context);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Production loss recorded'),
-                                ),
-                              );
-                              _refreshLosses();
-                            },
-                            child: const Text('Submit'),
+                          validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        TextFormField(
+                          controller: gradeNameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Grade Name',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.grade_outlined),
                           ),
-                        ],
-                      ),
-                    ],
+                          validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        TextFormField(
+                          controller: quantityController,
+                          decoration: const InputDecoration(
+                            labelText: 'Quantity',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.numbers),
+                          ),
+                          keyboardType: TextInputType.number,
+                          validator: (v) {
+                            if (v == null || v.isEmpty) return 'Required';
+                            if (double.tryParse(v) == null) return 'Invalid number';
+                            return null;
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
+              
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () async {
+                        if (!formKey.currentState!.validate()) return;
+                        final supabase = SupabaseService().client;
+                        try {
+                          await supabase.from('production_losses').insert({
+                            'occurred_at': selectedDate.toIso8601String(),
+                            'shift': selectedShift,
+                            'supervisor': supervisorController.text.trim(),
+                            'operator': operatorController.text.trim(),
+                            'grade_name': gradeNameController.text.trim(),
+                            'quantity': double.parse(quantityController.text),
+                          });
+                          if (mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Production loss recorded')),
+                            );
+                            _refreshLosses();
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                             ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: $e')),
+                            );
+                          }
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Submit'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
+        ),
+      ),
     );
   }
 
   void _showEditLossDialog(ProductionLoss loss) {
-    final _formKey = GlobalKey<FormState>();
-    DateTime _selectedDate = loss.occurredAt;
-    String _selectedShift = loss.shift;
-    final _supervisorController = TextEditingController(text: loss.supervisor);
-    final _operatorController = TextEditingController(text: loss.operatorName);
-    final _gradeNameController = TextEditingController(text: loss.gradeName);
-    final _quantityController = TextEditingController(
-      text: loss.quantity.toString(),
-    );
+    final formKey = GlobalKey<FormState>();
+    DateTime selectedDate = loss.occurredAt;
+    String selectedShift = loss.shift;
+    final supervisorController = TextEditingController(text: loss.supervisor);
+    final operatorController = TextEditingController(text: loss.operatorName);
+    final gradeNameController = TextEditingController(text: loss.gradeName);
+    final quantityController = TextEditingController(text: loss.quantity.toString());
 
     showDialog(
       context: context,
-      builder:
-          (context) => Dialog(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.edit, color: Colors.red),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Edit Production Loss',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ],
+      builder: (context) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          constraints: const BoxConstraints(maxWidth: 500),
+          child: StatefulBuilder(
+            builder: (context, setStateDialog) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Gradient Header
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.blue.shade800, Colors.blue.shade600],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.edit_note, color: Colors.white),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            'Edit Production Loss',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                        ],
-                      ),
-                      const Divider(height: 24),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.calendar_today),
-                        title: const Text('Date'),
-                        subtitle: Text(
-                          DateFormat('MMM dd, yyyy').format(_selectedDate),
                         ),
-                        trailing: const Icon(Icons.edit),
-                        onTap: () async {
-                          final date = await showDatePicker(
-                            context: context,
-                            initialDate: _selectedDate,
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                          );
-                          if (date != null) {
-                            _selectedDate = date;
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      DropdownButtonFormField<String>(
-                        value: _selectedShift,
-                        decoration: const InputDecoration(
-                          labelText: 'Shift',
-                          border: OutlineInputBorder(),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.pop(context),
+                          tooltip: 'Close',
                         ),
-                        items: const [
-                          DropdownMenuItem(value: 'day', child: Text('Day')),
-                          DropdownMenuItem(
-                            value: 'night',
-                            child: Text('Night'),
-                          ),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) _selectedShift = v;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _supervisorController,
-                        decoration: const InputDecoration(
-                          labelText: 'Supervisor',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator:
-                            (v) => v == null || v.isEmpty ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _operatorController,
-                        decoration: const InputDecoration(
-                          labelText: 'Operator',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator:
-                            (v) => v == null || v.isEmpty ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _gradeNameController,
-                        decoration: const InputDecoration(
-                          labelText: 'Grade Name',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator:
-                            (v) => v == null || v.isEmpty ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _quantityController,
-                        decoration: const InputDecoration(
-                          labelText: 'Quantity',
-                          border: OutlineInputBorder(),
-                        ),
-                        keyboardType: TextInputType.number,
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Required';
-                          if (double.tryParse(v) == null) return 'Invalid';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel'),
-                          ),
-                          const SizedBox(width: 12),
-                          ElevatedButton(
-                            onPressed: () async {
-                              if (_formKey.currentState!.validate()) {
-                                final supabase = await SupabaseService().client;
-                                await supabase
-                                    .from('production_losses')
-                                    .update({
-                                      'occurred_at':
-                                          _selectedDate.toIso8601String(),
-                                      'shift': _selectedShift,
-                                      'supervisor':
-                                          _supervisorController.text.trim(),
-                                      'operator':
-                                          _operatorController.text.trim(),
-                                      'grade_name':
-                                          _gradeNameController.text.trim(),
-                                      'quantity': double.parse(
-                                        _quantityController.text,
-                                      ),
-                                    })
-                                    .eq('id', loss.id);
-                                Navigator.pop(context);
-                                // ignore: use_build_context_synchronously
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Production loss updated'),
-                                  ),
-                                );
-                                _refreshLosses();
-                              }
-                            },
-                            child: const Text('Save'),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ),
+
+                  // Scrollable Content
+                  Flexible(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(24),
+                      child: Form(
+                        key: formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Date Input
+                            InkWell(
+                              onTap: () async {
+                                final date = await showDatePicker(
+                                  context: context,
+                                  initialDate: selectedDate,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime.now(),
+                                );
+                                if (date != null) {
+                                  setStateDialog(() => selectedDate = date);
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Date',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.calendar_today),
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                ),
+                                child: Text(DateFormat('MMM dd, yyyy').format(selectedDate)),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+
+                            // Shift Input
+                            DropdownButtonFormField<String>(
+                              value: selectedShift,
+                              decoration: const InputDecoration(
+                                labelText: 'Shift',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.access_time),
+                              ),
+                              items: const [
+                                DropdownMenuItem(value: 'day', child: Text('Day')),
+                                DropdownMenuItem(value: 'night', child: Text('Night')),
+                              ],
+                              onChanged: (v) {
+                                if (v != null) setStateDialog(() => selectedShift = v);
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            TextFormField(
+                              controller: supervisorController,
+                              decoration: const InputDecoration(
+                                labelText: 'Supervisor',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.person_outline),
+                              ),
+                              validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            TextFormField(
+                              controller: operatorController,
+                              decoration: const InputDecoration(
+                                labelText: 'Operator',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.engineering_outlined),
+                              ),
+                              validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            TextFormField(
+                              controller: gradeNameController,
+                              decoration: const InputDecoration(
+                                labelText: 'Grade Name',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.grade_outlined),
+                              ),
+                              validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            TextFormField(
+                              controller: quantityController,
+                              decoration: const InputDecoration(
+                                labelText: 'Quantity',
+                                border: OutlineInputBorder(),
+                                prefixIcon: Icon(Icons.numbers),
+                              ),
+                              keyboardType: TextInputType.number,
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return 'Required';
+                                if (double.tryParse(v) == null) return 'Invalid number';
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                        const SizedBox(width: 12),
+                        ElevatedButton(
+                          onPressed: () async {
+                            if (formKey.currentState!.validate()) {
+                              final supabase = SupabaseService().client;
+                              try {
+                                await supabase.from('production_losses').update({
+                                  'occurred_at': selectedDate.toIso8601String(),
+                                  'shift': selectedShift,
+                                  'supervisor': supervisorController.text.trim(),
+                                  'operator': operatorController.text.trim(),
+                                  'grade_name': gradeNameController.text.trim(),
+                                  'quantity': double.parse(quantityController.text),
+                                }).eq('id', loss.id);
+                                
+                                if (mounted) {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Production loss updated')),
+                                  );
+                                  _refreshLosses();
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                   ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Error: $e')),
+                                  );
+                                }
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue.shade700,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }
           ),
+        ),
+      ),
     );
   }
 
@@ -434,24 +512,43 @@ class _ProductionLossPageState extends State<ProductionLossPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Production Loss'),
-        backgroundColor: Colors.red,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _showAddLossDialog,
-            tooltip: 'Add Record',
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        toolbarHeight: 76,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue.shade800, Colors.blue.shade600],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: () async {
-              await SupabaseService().signOut();
-              if (!mounted) return;
-              Navigator.pushReplacementNamed(context, '/login');
-            },
-          ),
-        ],
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Production Loss',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Track and manage production discrepancies',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -646,7 +743,7 @@ class _ProductionLossPageState extends State<ProductionLossPage> {
         onPressed: _showAddLossDialog,
         icon: const Icon(Icons.add),
         label: const Text('Add Record'),
-        backgroundColor: Colors.red,
+        backgroundColor: Colors.blue.shade700,
       ),
     );
   }

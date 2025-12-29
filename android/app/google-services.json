@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "524107160660",
+    "project_id": "mdplastics-c4912",
+    "storage_bucket": "mdplastics-c4912.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:524107160660:android:f672bec2085bb579c6a1c1",
+        "android_client_info": {
+          "package_name": "com.volcan.mdp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAUiDFmvprYWN4l8QJMd6-eDgfjDpURRrE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

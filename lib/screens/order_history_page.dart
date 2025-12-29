@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/order_history.dart';
+import '../services/excel_export_service.dart';
 import '../services/shipment_service.dart';
 import '../widgets/back_to_dashboard.dart';
 import '../widgets/wire_card.dart';
@@ -36,6 +38,67 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error loading history: $e')));
+      }
+    }
+  }
+
+  /// Export all order history to Excel/CSV
+  Future<void> _exportHistoryToExcel() async {
+    try {
+      final headers = [
+        'Order No.',
+        'Client Name',
+        'Products & Quantity',
+        'Expected Dispatch Date',
+        'Total Amount',
+        'Total Installments',
+        'Pending Amount',
+        'Batch No.',
+        'Batch Details',
+        'Shipment Details',
+        'Vehicle Number',
+        'Date of Delivery',
+      ];
+
+      final List<List<dynamic>> rows = _history.map((order) {
+        return [
+          order.orderNumber ?? '',
+          order.clientName ?? '',
+          order.productsList ?? '',
+          order.dueDate ?? '',
+          order.totalAmount.toStringAsFixed(2),
+          order.advancePaid.toStringAsFixed(2),
+          order.pendingAmount.toStringAsFixed(2),
+          order.batchNo ?? '',
+          order.batchDetails ?? '',
+          '', // Shipment Details
+          '', // Vehicle Number
+          order.shippedAt ?? '',
+        ];
+      }).toList();
+
+      await ExcelExportService.instance.exportToCsv(
+        headers: headers,
+        rows: rows,
+        fileName: 'order_history_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Order history exported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -323,8 +386,47 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Order History'),
-        leading: BackToDashboardButton(),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        toolbarHeight: 76,
+        centerTitle: false,
+        automaticallyImplyLeading: false,
+        iconTheme: const IconThemeData(color: Colors.white),
+        leading: const BackToDashboardButton(),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue.shade800, Colors.blue.shade600],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text(
+              'Order History',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'View past completed orders',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.white70,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download, color: Colors.white),
+            tooltip: 'Download History (Excel)',
+            onPressed: _exportHistoryToExcel,
+          ),
+        ],
       ),
       body:
           _isLoading
@@ -365,23 +467,49 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                                       ),
                                     ),
                                   ),
-                                  Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green[50],
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      'SHIPPED',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green[800],
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _getStatusColor(order.status).withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          (order.status ?? 'SHIPPED').toUpperCase().replaceAll('_', ' '),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: _getStatusColor(order.status),
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                      if (order.destination != null && order.destination!.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 6.0),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(Icons.location_on, size: 12, color: Colors.grey[600]),
+                                              SizedBox(width: 2),
+                                              Container(
+                                                constraints: BoxConstraints(maxWidth: 100),
+                                                child: Text(
+                                                  order.destination!,
+                                                  style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  textAlign: TextAlign.right,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -425,5 +553,18 @@ class _OrderHistoryPageState extends State<OrderHistoryPage> {
                 },
               ),
     );
+  }
+
+  Color _getStatusColor(String? status) {
+    if (status == null) return Colors.green[800]!;
+    switch (status.toLowerCase()) {
+      case 'delivered':
+        return Colors.blue[800]!;
+      case 'shipped':
+      case 'in_transit':
+        return Colors.orange[800]!;
+      default:
+        return Colors.green[800]!;
+    }
   }
 }

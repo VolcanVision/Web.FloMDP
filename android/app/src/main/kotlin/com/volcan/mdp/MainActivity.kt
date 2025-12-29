@@ -1,4 +1,4 @@
-package com.example.scm
+package com.volcan.mdp
 
 import io.flutter.embedding.android.FlutterActivity
 

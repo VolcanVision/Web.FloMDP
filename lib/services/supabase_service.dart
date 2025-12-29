@@ -76,21 +76,21 @@ class SupabaseService {
     // First attempt payload
     final baseData = customer.toMap()..remove('id');
     // Some columns may not exist yet in DB (e.g. is_active) – remove dynamically on retry
-    Future<Customer?> _tryInsert(Map<String, dynamic> data) async {
+    Future<Customer?> tryInsert(Map<String, dynamic> data) async {
       final response =
           await client.from('customers').insert(data).select().single();
       return Customer.fromMap(response);
     }
 
     try {
-      return await _tryInsert({...baseData});
+      return await tryInsert({...baseData});
     } on PostgrestException catch (e) {
       final msg = e.message;
       if (msg.contains("is_active") || e.code == 'PGRST204') {
         // Remove is_active and retry
         final retryData = {...baseData}..remove('is_active');
         try {
-          return await _tryInsert(retryData);
+          return await tryInsert(retryData);
         } catch (e2) {
           debugPrint('Retry addCustomer without is_active failed: $e2');
           return null;
@@ -164,16 +164,18 @@ class SupabaseService {
   }
 
   Future<Order?> addOrder(Order order) async {
-    final baseData = order.toMap()..remove('id');
+    final baseData = order.toMap()
+      ..remove('id')
+      ..remove('location');
 
-    Future<Order?> _tryInsert(Map<String, dynamic> data) async {
+    Future<Order?> tryInsert(Map<String, dynamic> data) async {
       final response =
           await client.from('orders').insert(data).select().single();
       return Order.fromMap(response);
     }
 
     try {
-      return await _tryInsert({...baseData});
+      return await tryInsert({...baseData});
     } on PostgrestException catch (e) {
       final msg = e.message;
       // Handle check constraint on order_status
@@ -184,7 +186,7 @@ class SupabaseService {
           if (baseData['order_status'] == candidate) continue;
           try {
             final alt = {...baseData, 'order_status': candidate};
-            final inserted = await _tryInsert(alt);
+            final inserted = await tryInsert(alt);
             if (inserted != null) return inserted;
           } catch (_) {
             /* continue */
@@ -193,7 +195,7 @@ class SupabaseService {
         // Last resort: remove the field entirely and let default apply
         try {
           final without = {...baseData}..remove('order_status');
-          return await _tryInsert(without);
+          return await tryInsert(without);
         } catch (e2) {
           debugPrint('Retry addOrder without order_status failed: $e2');
           return null;
@@ -209,7 +211,9 @@ class SupabaseService {
 
   Future<bool> updateOrder(Order order) async {
     try {
-      await client.from('orders').update(order.toMap()).eq('id', order.id!);
+      final data = order.toMap()
+        ..remove('location'); // location is not a column in orders
+      await client.from('orders').update(data).eq('id', order.id!);
       return true;
     } catch (e) {
       debugPrint('Error updating order: $e');
@@ -277,7 +281,7 @@ class SupabaseService {
     if (!payload.containsKey('created_at')) payload.remove('created_at');
     if (!payload.containsKey('updated_at')) payload.remove('updated_at');
 
-    Future<InventoryItem?> _tryInsert(Map<String, dynamic> data) async {
+    Future<InventoryItem?> tryInsert(Map<String, dynamic> data) async {
       final response =
           await client.from('inventory_items').insert(data).select().single();
       return InventoryItem.fromMap(response);
@@ -285,7 +289,7 @@ class SupabaseService {
 
     try {
       lastInventoryError = null;
-      return await _tryInsert(payload);
+      return await tryInsert(payload);
     } on PostgrestException catch (e) {
       final rawMsg = e.message;
       final msg = rawMsg.toLowerCase();
@@ -306,7 +310,7 @@ class SupabaseService {
               ..remove('created_at')
               ..remove('updated_at');
         try {
-          return await _tryInsert(retry);
+          return await tryInsert(retry);
         } catch (e2) {
           lastInventoryError = 'Failed retry without timestamps: $e2';
           debugPrint('Retry addInventoryItem without timestamps failed: $e2');
@@ -398,7 +402,7 @@ class SupabaseService {
 
   Future<CalendarTask?> addCalendarTask(CalendarTask task) async {
     final base = task.toMap()..remove('id');
-    Future<CalendarTask?> _try(Map<String, dynamic> data) async {
+    Future<CalendarTask?> attemptInsert(Map<String, dynamic> data) async {
       final response =
           await client.from('calendar_tasks').insert(data).select().single();
       return CalendarTask.fromMap(response);
@@ -406,7 +410,7 @@ class SupabaseService {
 
     try {
       lastCalendarError = null;
-      return await _try({...base});
+      return await attemptInsert({...base});
     } on PostgrestException catch (e) {
       final msg = e.message.toLowerCase();
       if (msg.contains('row-level security') || msg.contains('rls')) {
@@ -424,7 +428,7 @@ class SupabaseService {
           final retry = {...base};
           retry['date'] = retry.remove('task_date');
           try {
-            return await _try(retry);
+            return await attemptInsert(retry);
           } catch (_) {}
         }
       }
@@ -481,13 +485,13 @@ class SupabaseService {
   Future<Alert?> addAlert(Alert alert) async {
     lastAlertError = null;
     final base = alert.toMap()..remove('id');
-    Future<Alert?> _try(Map<String, dynamic> data) async {
+    Future<Alert?> attemptInsert(Map<String, dynamic> data) async {
       final res = await client.from('alerts').insert(data).select().single();
       return Alert.fromMap(res);
     }
 
     try {
-      return await _try({...base});
+      return await attemptInsert({...base});
     } on PostgrestException catch (e) {
       final msg = e.message.toLowerCase();
       if (msg.contains('row-level security') || msg.contains('rls')) {
@@ -503,7 +507,7 @@ class SupabaseService {
         final retry = {...base};
         retry['message'] = retry.remove('description');
         try {
-          return await _try(retry);
+          return await attemptInsert(retry);
         } catch (_) {}
       }
       lastAlertError = e.message;
@@ -564,9 +568,7 @@ class SupabaseService {
       // `moved_to_inventory` is false. This keeps historical/completed batches
       // in `production_batches` but excludes them from the active queue view.
       // Include the related order's order_status so we can exclude batches
-      // whose parent order has been dispatched. We still filter by queued_at
-      // and moved_to_inventory on the server side and then post-filter by the
-      // related orders field in case order_status changed separately.
+      // whose parent order has been dispatched or is pending approval.
       final response = await client
           .from('production_batches')
           .select('*, orders(order_status)')
@@ -576,16 +578,23 @@ class SupabaseService {
 
       final rows = (response as List).cast<Map<String, dynamic>>();
 
-      // Remove any batches whose linked order has order_status = 'dispatched' or 'shipped'
+      // Remove any batches whose linked order has order_status = 'dispatched', 'shipped' OR 'pending_approval'
       final filtered =
           rows.where((batch) {
             try {
               final orderRel = batch['orders'];
+              // If it's a standalone batch (order_id null), we show it.
               if (orderRel == null) return true;
+              
               final orderStatus =
                   (orderRel['order_status'] ?? '').toString().toLowerCase();
-              if (orderStatus == 'dispatched' || orderStatus == 'shipped')
+              
+              // Filter out completed/shipped AND pending approval orders
+              if (orderStatus == 'dispatched' || 
+                  orderStatus == 'shipped' ||
+                  orderStatus == 'pending_approval') {
                 return false;
+              }
             } catch (_) {
               // If unexpected structure, keep the batch to avoid hiding items unintentionally
               return true;
@@ -687,6 +696,10 @@ class SupabaseService {
         data['status'] = 'in_production'; // Keep as in_production in DB
       }
 
+      if (progress != null) {
+        data['progress'] = progress;
+      }
+
       await client.from('production_batches').update(data).eq('id', id);
 
       return true;
@@ -729,8 +742,9 @@ class SupabaseService {
         'p_order_id': orderId,
         'p_status': status,
       };
-      if (shippedAt != null)
+      if (shippedAt != null) {
         params['p_shipped_at'] = shippedAt.toIso8601String();
+      }
       // Call RPC - using select() to trigger execution and ignore returned rows.
       await client.rpc('ship_order_and_batches', params: params).select();
       return true;

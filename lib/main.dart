@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'config/supabase_config.dart';
 import 'screens/login_page.dart';
+import 'screens/splash_screen.dart';
 import 'services/orders_service.dart';
+import 'services/fcm_service.dart';
+import 'auth/auth_service.dart';
 
 // Admin
 import 'screens/admin/admin_dashboard.dart';
@@ -25,12 +30,16 @@ import 'screens/accounts/purchase_page.dart';
 import 'screens/accounts/orders_page.dart';
 import 'screens/accounts/history_page.dart' as accounts_history;
 import 'screens/accounts/calendar_page.dart';
+import 'screens/accounts/dispatch_tracking_page.dart';
 
 // Admin new pages
 import 'screens/admin/history_page.dart';
 import 'screens/admin/lab_test_page.dart';
 import 'screens/admin/cost_calendar_page.dart';
 import 'screens/admin/accounts_page.dart';
+
+// Lab Testing
+import 'screens/lab_testing/lab_testing_dashboard.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +53,16 @@ void main() async {
 
     // Skip SQLite initialization on web platforms
     debugPrint('Supabase initialized successfully');
+
+    // Initialize Firebase (skip on web for now)
+    if (!kIsWeb) {
+      await Firebase.initializeApp();
+      debugPrint('Firebase initialized successfully');
+      
+      // Initialize FCM service
+      await FCMService().initialize();
+      debugPrint('FCM service initialized successfully');
+    }
 
     // Initialize default data
     await OrdersService.instance.initializeDefaultData();
@@ -60,11 +79,12 @@ class SCMApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SCM Functional App',
+      title: 'MDPlastics',
       theme: ThemeData(useMaterial3: true, primarySwatch: Colors.blueGrey),
-      initialRoute: '/login',
+      initialRoute: '/splash',
       routes: {
-        '/login': (_) => LoginPage(),
+        '/splash': (_) => const SplashScreen(),
+        '/login': (_) => const LoginPage(),
 
         // Admin routes
         '/admin/dashboard': (_) => AdminDashboard(),
@@ -73,7 +93,7 @@ class SCMApp extends StatelessWidget {
         '/admin/inventory': (_) => InventoryPage(),
         '/admin/reports': (_) => ReportsPage(),
         '/admin/calendar': (_) => CalendarPage(),
-        '/admin/history': (_) => HistoryPage(),
+        '/admin/history': (_) => HistoryPage(role: UserRole.admin),
         '/admin/lab-test': (_) => LabTestPage(),
         '/admin/cost-calendar': (_) => CostCalendarPage(),
         '/admin/accounts': (_) => AdminAccountsPage(),
@@ -86,7 +106,7 @@ class SCMApp extends StatelessWidget {
         '/production/returned': (_) => ReturnedOrdersPage(),
         '/production/dispatch': (_) => DispatchPage(),
         '/production/loss': (_) => ProductionLossPage(),
-        '/production/history': (_) => HistoryPage(),
+        '/production/history': (_) => HistoryPage(role: UserRole.production),
 
         // Accounts routes
         '/accounts/dashboard': (_) => AccountsDashboard(),
@@ -94,6 +114,10 @@ class SCMApp extends StatelessWidget {
         '/accounts/history': (_) => accounts_history.AccountsHistoryPage(),
         '/accounts/purchase': (_) => PurchasePage(),
         '/accounts/calendar': (_) => AccountsCalendarPage(),
+        '/accounts/dispatch': (_) => DispatchTrackingPage(),
+
+        // Lab Testing routes
+        '/lab_testing/dashboard': (_) => LabTestingDashboard(),
       },
     );
   }
