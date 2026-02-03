@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../calendar_page.dart' as calendar;
+import '../../auth/auth_service.dart';
 
 class AccountsCalendarPage extends StatelessWidget {
   const AccountsCalendarPage({super.key});
@@ -7,7 +8,7 @@ class AccountsCalendarPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: calendar.CalendarPage(),
+      body: calendar.CalendarPage(initialRole: UserRole.accounts),
     );
   }
 }

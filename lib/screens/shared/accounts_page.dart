@@ -7,6 +7,7 @@ import '../../services/alerts_service.dart';
 import '../../services/purchases_service.dart';
 import '../../services/orders_service.dart';
 import '../../widgets/back_to_dashboard.dart';
+import '../../widgets/help_support_dialog.dart';
 
 class SharedAccountsPage extends StatefulWidget {
   final String role; // 'admin' or 'accounts'
@@ -398,27 +399,7 @@ class _SharedAccountsPageState extends State<SharedAccountsPage> {
                   Navigator.pushReplacementNamed(context, '/login');
                   break;
                 case 'help':
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Help & Support'),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('For support, contact:'),
-                          SizedBox(height: 8),
-                          Text('support@yourcompany.com'),
-                        ],
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(),
-                          child: const Text('Close'),
-                        ),
-                      ],
-                    ),
-                  );
+                  HelpSupportDialog.show(context);
                   break;
               }
             },

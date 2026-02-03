@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 // header widget no longer used in this screen
 import '../../services/supabase_service.dart';
+import '../../services/shipment_service.dart';
 // Sidebar removed in favor of a bento-style menu
 import '../../widgets/todo_list_widget.dart';
 import '../../services/purchases_service.dart';
@@ -10,6 +11,7 @@ import '../../models/order_item.dart';
 import '../../models/calendar_task.dart';
 import '../../services/orders_service.dart';
 import '../../theme/pastel_colors.dart';
+import '../../widgets/help_support_dialog.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -204,13 +206,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 st == 'shipped');
           }).length;
 
-      // Sales: consider completed or paid orders as sales
-      final sales =
-          _orders.where((o) {
-            final st = o.orderStatus.toLowerCase();
-            final pay = o.paymentStatus.toLowerCase();
-            return st == 'completed' || pay == 'paid';
-          }).length;
+      // Sales: count history records (delivered shipments) - same as history page
+      final shipmentService = ShipmentService();
+      final historyRecords = await shipmentService.getOrderHistory();
+      final sales = historyRecords.take(30).length; // Match history page limit
 
       // Purchases count
       final purchases = await PurchasesService().fetchAll();
@@ -317,32 +316,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                   );
                   break;
                 case 'help':
-                  showDialog(
-                    context: context,
-                    builder:
-                        (ctx) => AlertDialog(
-                          title: const Text('Help & Support'),
-                          content: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text('For support, contact:'),
-                              SizedBox(height: 8),
-                              Text('support@yourcompany.com'),
-                              SizedBox(height: 8),
-                              Text(
-                                'Or visit the Help Center from the documentation.',
-                              ),
-                            ],
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.of(ctx).pop(),
-                              child: const Text('Close'),
-                            ),
-                          ],
-                        ),
-                  );
+                  HelpSupportDialog.show(context);
                   break;
                 case 'logout':
                   try {
@@ -527,62 +501,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  // sample order or real ones
-                  if (_orders.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            backgroundColor: Colors.grey[200],
-                            child: Icon(Icons.person, color: Colors.grey[700]),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Acme Corporation',
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Plastic Bottles • Qty: 100',
-                                  style: TextStyle(color: Colors.grey[700]),
-                                ),
-                              ],
-                            ),
-                          ),
-                          // Unpaid badge: white background with red border & red text (no shadow)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.red[600]!),
-                            ),
-                            child: Text(
-                              'UNPAID',
-                              style: TextStyle(
-                                color: Colors.red[600],
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ..._orders.take(3).map((o) => _buildOrderCard(o)),
+                  ..._orders.take(3).map((o) => _buildOrderCard(o)),
                 ],
               ),
             ),
@@ -863,7 +782,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ),
     );
   }
-
 
   Color _getPaymentStatusColor(Order order) {
     // Return softer pastel colors for the left accent bars and status tint.

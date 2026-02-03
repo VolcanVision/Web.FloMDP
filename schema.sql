@@ -55,6 +55,33 @@ CREATE TABLE public.fcm_tokens (
   CONSTRAINT fcm_tokens_pkey PRIMARY KEY (id),
   CONSTRAINT fcm_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id)
 );
+CREATE TABLE public.inventory_additions (
+  id bigint NOT NULL DEFAULT nextval('inventory_additions_id_seq'::regclass),
+  inventory_item_id bigint NOT NULL,
+  item_name text NOT NULL,
+  quantity numeric NOT NULL CHECK (quantity > 0::numeric),
+  addition_date date NOT NULL DEFAULT CURRENT_DATE,
+  supplier text,
+  notes text,
+  added_by text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT inventory_additions_pkey PRIMARY KEY (id),
+  CONSTRAINT inventory_additions_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
+);
+CREATE TABLE public.inventory_consumptions (
+  id bigint NOT NULL DEFAULT nextval('inventory_consumptions_id_seq'::regclass),
+  inventory_item_id bigint NOT NULL,
+  item_name text NOT NULL,
+  quantity numeric NOT NULL CHECK (quantity > 0::numeric),
+  consumption_date date NOT NULL DEFAULT CURRENT_DATE,
+  purpose text,
+  batch_no text,
+  notes text,
+  consumed_by text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT inventory_consumptions_pkey PRIMARY KEY (id),
+  CONSTRAINT inventory_consumptions_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
+);
 CREATE TABLE public.inventory_items (
   id bigint NOT NULL DEFAULT nextval('inventory_items_id_seq'::regclass),
   name text NOT NULL,
@@ -261,4 +288,31 @@ CREATE TABLE public.users (
   auth_id uuid UNIQUE,
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_auth_id_fkey FOREIGN KEY (auth_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.inventory_additions (
+  id bigint NOT NULL DEFAULT nextval('inventory_additions_id_seq'::regclass),
+  inventory_item_id bigint NOT NULL,
+  item_name text NOT NULL,
+  quantity numeric NOT NULL CHECK (quantity > 0),
+  addition_date date NOT NULL DEFAULT CURRENT_DATE,
+  supplier text,
+  notes text,
+  added_by text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT inventory_additions_pkey PRIMARY KEY (id),
+  CONSTRAINT inventory_additions_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id) ON DELETE CASCADE
+);
+CREATE TABLE public.inventory_consumptions (
+  id bigint NOT NULL DEFAULT nextval('inventory_consumptions_id_seq'::regclass),
+  inventory_item_id bigint NOT NULL,
+  item_name text NOT NULL,
+  quantity numeric NOT NULL CHECK (quantity > 0),
+  consumption_date date NOT NULL DEFAULT CURRENT_DATE,
+  purpose text,
+  batch_no text,
+  notes text,
+  consumed_by text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT inventory_consumptions_pkey PRIMARY KEY (id),
+  CONSTRAINT inventory_consumptions_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id) ON DELETE CASCADE
 );

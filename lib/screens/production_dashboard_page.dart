@@ -8,6 +8,7 @@ import '../services/supabase_service.dart';
 import '../models/order.dart';
 import '../services/orders_service.dart';
 import '../models/calendar_task.dart' show TaskCategory;
+import '../widgets/help_support_dialog.dart';
 // Sidebar removed from layout
 
 String _age(DateTime? d) {
@@ -85,24 +86,7 @@ class ProductionDashboardPage extends StatelessWidget {
                   Navigator.pushReplacementNamed(context, '/login');
                   break;
                 case 'help':
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Help & Support'),
-                      content: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('For support, contact:'),
-                          SizedBox(height: 8),
-                          Text('support@yourcompany.com'),
-                        ],
-                      ),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Close')),
-                      ],
-                    ),
-                  );
+                  HelpSupportDialog.show(context);
                   break;
               }
             },

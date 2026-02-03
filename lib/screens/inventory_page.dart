@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/inventory_item.dart';
+import '../models/inventory_addition.dart';
+import '../models/inventory_consumption.dart';
 import '../services/excel_export_service.dart';
+import '../services/inventory_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/back_to_dashboard.dart';
 
@@ -127,55 +130,228 @@ class _InventoryPageState extends State<InventoryPage>
   void _showExportOptionsDialog() {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(Icons.download, color: Colors.blue.shade700),
-            const SizedBox(width: 12),
-            const Text('Export Inventory'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: Icon(Icons.category, color: Colors.blue.shade600),
-              title: const Text('Export Current Category'),
-              subtitle: Text(_categories[_tabController.index]),
-              onTap: () {
-                Navigator.pop(ctx);
-                _exportInventoryToExcel(category: _categories[_tabController.index]);
-              },
+      builder:
+          (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-            ListTile(
-              leading: Icon(Icons.inventory_2, color: Colors.green.shade600),
-              title: const Text('Export All Inventory'),
-              subtitle: const Text('All categories'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _exportInventoryToExcel();
-              },
+            title: Row(
+              children: [
+                Icon(Icons.download, color: Colors.blue.shade700),
+                const SizedBox(width: 12),
+                const Text('Export Inventory'),
+              ],
             ),
-            ListTile(
-              leading: Icon(Icons.warning, color: Colors.orange.shade600),
-              title: const Text('Export Low Stock Items'),
-              subtitle: const Text('Items below minimum quantity'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _exportLowStockToExcel();
-              },
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(Icons.category, color: Colors.blue.shade600),
+                  title: const Text('Export Current Category'),
+                  subtitle: Text(_categories[_tabController.index]),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportInventoryToExcel(
+                      category: _categories[_tabController.index],
+                    );
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.inventory_2,
+                    color: Colors.green.shade600,
+                  ),
+                  title: const Text('Export All Inventory'),
+                  subtitle: const Text('All categories'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportInventoryToExcel();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.warning, color: Colors.orange.shade600),
+                  title: const Text('Export Low Stock Items'),
+                  subtitle: const Text('Items below minimum quantity'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportLowStockToExcel();
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  leading: Icon(Icons.add_circle, color: Colors.green.shade600),
+                  title: const Text('Export Additions History'),
+                  subtitle: const Text('All material additions with dates'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportAdditionsHistory();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.remove_circle,
+                    color: Colors.orange.shade600,
+                  ),
+                  title: const Text('Export Consumptions History'),
+                  subtitle: const Text('All material consumptions with dates'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportConsumptionsHistory();
+                  },
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
+  }
+
+  /// Export additions history to CSV
+  Future<void> _exportAdditionsHistory() async {
+    try {
+      final inventoryService = InventoryService();
+      final additions = await inventoryService.fetchAdditions();
+
+      if (additions.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No addition records found!'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final headers = [
+        'Date',
+        'Item Name',
+        'Quantity',
+        'Supplier',
+        'Notes',
+        'Created At',
+      ];
+
+      final List<List<dynamic>> rows =
+          additions.map((a) {
+            return [
+              DateFormat('dd/MM/yyyy').format(a.additionDate),
+              a.itemName,
+              a.quantity.toString(),
+              a.supplier ?? '',
+              a.notes ?? '',
+              a.createdAt != null
+                  ? DateFormat('dd/MM/yyyy HH:mm').format(a.createdAt!)
+                  : '',
+            ];
+          }).toList();
+
+      await ExcelExportService.instance.exportToCsv(
+        headers: headers,
+        rows: rows,
+        fileName:
+            'inventory_additions_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Additions history exported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Export consumptions history to CSV
+  Future<void> _exportConsumptionsHistory() async {
+    try {
+      final inventoryService = InventoryService();
+      final consumptions = await inventoryService.fetchConsumptions();
+
+      if (consumptions.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No consumption records found!'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      final headers = [
+        'Date',
+        'Item Name',
+        'Quantity',
+        'Purpose',
+        'Batch No',
+        'Notes',
+        'Created At',
+      ];
+
+      final List<List<dynamic>> rows =
+          consumptions.map((c) {
+            return [
+              DateFormat('dd/MM/yyyy').format(c.consumptionDate),
+              c.itemName,
+              c.quantity.toString(),
+              c.purpose ?? '',
+              c.batchNo ?? '',
+              c.notes ?? '',
+              c.createdAt != null
+                  ? DateFormat('dd/MM/yyyy HH:mm').format(c.createdAt!)
+                  : '',
+            ];
+          }).toList();
+
+      await ExcelExportService.instance.exportToCsv(
+        headers: headers,
+        rows: rows,
+        fileName:
+            'inventory_consumptions_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Consumptions history exported successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error exporting: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Show transaction history dialog with tabs for additions and consumptions
+  void _showTransactionHistoryDialog() {
+    showDialog(context: context, builder: (ctx) => _TransactionHistoryDialog());
   }
 
   /// Export inventory to Excel/CSV
@@ -197,21 +373,25 @@ class _InventoryPageState extends State<InventoryPage>
         itemsToExport = _allItems;
       }
 
-      final List<List<dynamic>> rows = itemsToExport.map((item) {
-        final isLowStock = (item.minQuantity ?? 0) > 0 && item.quantity <= (item.minQuantity ?? 0);
-        return [
-          item.name,
-          item.category,
-          item.type,
-          item.quantity.toString(),
-          (item.minQuantity ?? 0).toString(),
-          isLowStock ? 'LOW STOCK' : 'OK',
-        ];
-      }).toList();
+      final List<List<dynamic>> rows =
+          itemsToExport.map((item) {
+            final isLowStock =
+                (item.minQuantity ?? 0) > 0 &&
+                item.quantity <= (item.minQuantity ?? 0);
+            return [
+              item.name,
+              item.category,
+              item.type,
+              item.quantity.toString(),
+              (item.minQuantity ?? 0).toString(),
+              isLowStock ? 'LOW STOCK' : 'OK',
+            ];
+          }).toList();
 
-      final fileName = category != null 
-          ? 'inventory_${category.toLowerCase().replaceAll(' ', '_')}_${DateFormat('yyyyMMdd').format(DateTime.now())}'
-          : 'inventory_all_${DateFormat('yyyyMMdd').format(DateTime.now())}';
+      final fileName =
+          category != null
+              ? 'inventory_${category.toLowerCase().replaceAll(' ', '_')}_${DateFormat('yyyyMMdd').format(DateTime.now())}'
+              : 'inventory_all_${DateFormat('yyyyMMdd').format(DateTime.now())}';
 
       await ExcelExportService.instance.exportToCsv(
         headers: headers,
@@ -251,10 +431,11 @@ class _InventoryPageState extends State<InventoryPage>
         'Shortage',
       ];
 
-      final lowStockItems = _allItems.where((item) {
-        final minQty = item.minQuantity ?? 0;
-        return minQty > 0 && item.quantity <= minQty;
-      }).toList();
+      final lowStockItems =
+          _allItems.where((item) {
+            final minQty = item.minQuantity ?? 0;
+            return minQty > 0 && item.quantity <= minQty;
+          }).toList();
 
       if (lowStockItems.isEmpty) {
         if (mounted) {
@@ -268,22 +449,24 @@ class _InventoryPageState extends State<InventoryPage>
         return;
       }
 
-      final List<List<dynamic>> rows = lowStockItems.map((item) {
-        final shortage = (item.minQuantity ?? 0) - item.quantity.toInt();
-        return [
-          item.name,
-          item.category,
-          item.type,
-          item.quantity.toString(),
-          (item.minQuantity ?? 0).toString(),
-          shortage > 0 ? shortage.toString() : '0',
-        ];
-      }).toList();
+      final List<List<dynamic>> rows =
+          lowStockItems.map((item) {
+            final shortage = (item.minQuantity ?? 0) - item.quantity.toInt();
+            return [
+              item.name,
+              item.category,
+              item.type,
+              item.quantity.toString(),
+              (item.minQuantity ?? 0).toString(),
+              shortage > 0 ? shortage.toString() : '0',
+            ];
+          }).toList();
 
       await ExcelExportService.instance.exportToCsv(
         headers: headers,
         rows: rows,
-        fileName: 'inventory_low_stock_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+        fileName:
+            'inventory_low_stock_${DateFormat('yyyyMMdd').format(DateTime.now())}',
       );
 
       if (mounted) {
@@ -390,6 +573,11 @@ class _InventoryPageState extends State<InventoryPage>
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history, color: Colors.white),
+            tooltip: 'Transaction History',
+            onPressed: _showTransactionHistoryDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.download, color: Colors.white),
             tooltip: 'Export',
@@ -630,11 +818,18 @@ class _InventoryPageState extends State<InventoryPage>
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(child: _buildDataTable(filteredItems)),
+      child: SingleChildScrollView(
+        child: _buildDataTable(filteredItems, category),
+      ),
     );
   }
 
-  Widget _buildDataTable(List<InventoryItem> items) {
+  Widget _buildDataTable(List<InventoryItem> items, String category) {
+    // Check if this category should show +/- buttons
+    final showQuantityButtons =
+        category.toLowerCase().trim() == 'spare parts' ||
+        category.toLowerCase().trim() == 'additives';
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: DataTable(
@@ -718,6 +913,21 @@ class _InventoryPageState extends State<InventoryPage>
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        // Show +/- buttons for Spare Parts and Additives
+                        if (showQuantityButtons) ...[
+                          IconButton(
+                            icon: const Icon(Icons.add_circle, size: 18),
+                            onPressed: () => _showAddQuantityDialog(item),
+                            tooltip: 'Add Quantity',
+                            color: Colors.green,
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle, size: 18),
+                            onPressed: () => _showConsumeQuantityDialog(item),
+                            tooltip: 'Consume Quantity',
+                            color: Colors.orange,
+                          ),
+                        ],
                         IconButton(
                           icon: const Icon(Icons.edit, size: 18),
                           onPressed: () => _showAddEditDialog(item),
@@ -737,6 +947,380 @@ class _InventoryPageState extends State<InventoryPage>
               );
             }).toList(),
       ),
+    );
+  }
+
+  /// Show dialog to add quantity to an item (for Spare Parts and Additives)
+  void _showAddQuantityDialog(InventoryItem item) {
+    final quantityController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    final parentContext = context;
+
+    showDialog(
+      context: parentContext,
+      builder:
+          (dialogContext) => StatefulBuilder(
+            builder:
+                (dialogContext, setDialogState) => AlertDialog(
+                  titlePadding: EdgeInsets.zero,
+                  title: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.green.shade700, Colors.green.shade500],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(6),
+                        topRight: Radius.circular(6),
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.add_circle, color: Colors.white),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Add Quantity',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Item: ${item.name}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Current Quantity: ${item.quantity.toInt()}',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: quantityController,
+                          keyboardType: TextInputType.number,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Quantity to Add *',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.add, color: Colors.green),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // Date Picker
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: dialogContext,
+                              initialDate: selectedDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now().add(
+                                const Duration(days: 365),
+                              ),
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                selectedDate = picked;
+                              });
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Addition Date *',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(
+                                Icons.calendar_today,
+                                color: Colors.green,
+                              ),
+                            ),
+                            child: Text(
+                              DateFormat('dd/MM/yyyy').format(selectedDate),
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        final addQty =
+                            double.tryParse(quantityController.text) ?? 0;
+                        if (addQty <= 0) {
+                          ScaffoldMessenger.of(parentContext).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Please enter a valid quantity greater than 0',
+                              ),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+
+                        final inventoryService = InventoryService();
+                        final success = await inventoryService
+                            .addQuantityWithHistory(
+                              item: item,
+                              quantity: addQty,
+                              additionDate: selectedDate,
+                            );
+
+                        if (success) {
+                          await _loadInventory();
+                          if (mounted) {
+                            Navigator.of(dialogContext).pop();
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Added ${addQty.toInt()} to ${item.name}',
+                                ),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } else {
+                          if (mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  inventoryService.lastError ??
+                                      'Failed to add quantity',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Add'),
+                    ),
+                  ],
+                ),
+          ),
+    );
+  }
+
+  /// Show dialog to consume/remove quantity from an item (for Spare Parts and Additives)
+  void _showConsumeQuantityDialog(InventoryItem item) {
+    final quantityController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    final parentContext = context;
+
+    showDialog(
+      context: parentContext,
+      builder:
+          (dialogContext) => StatefulBuilder(
+            builder:
+                (dialogContext, setDialogState) => AlertDialog(
+                  titlePadding: EdgeInsets.zero,
+                  title: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.orange.shade700,
+                          Colors.orange.shade500,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(6),
+                        topRight: Radius.circular(6),
+                      ),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.remove_circle, color: Colors.white),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Consume Quantity',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Item: ${item.name}',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Current Quantity: ${item.quantity.toInt()}',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: quantityController,
+                          keyboardType: TextInputType.number,
+                          autofocus: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Quantity to Consume *',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(
+                              Icons.remove,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // Date Picker
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: dialogContext,
+                              initialDate: selectedDate,
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime.now().add(
+                                const Duration(days: 365),
+                              ),
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                selectedDate = picked;
+                              });
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Consumption Date *',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(
+                                Icons.calendar_today,
+                                color: Colors.orange,
+                              ),
+                            ),
+                            child: Text(
+                              DateFormat('dd/MM/yyyy').format(selectedDate),
+                              style: const TextStyle(fontSize: 16),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        final consumeQty =
+                            double.tryParse(quantityController.text) ?? 0;
+                        if (consumeQty <= 0) {
+                          ScaffoldMessenger.of(parentContext).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Please enter a valid quantity greater than 0',
+                              ),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (consumeQty > item.quantity) {
+                          ScaffoldMessenger.of(parentContext).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Cannot consume more than available (${item.quantity.toInt()})',
+                              ),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                          return;
+                        }
+
+                        final inventoryService = InventoryService();
+                        final success = await inventoryService
+                            .consumeQuantityWithHistory(
+                              item: item,
+                              quantity: consumeQty,
+                              consumptionDate: selectedDate,
+                            );
+
+                        if (success) {
+                          await _loadInventory();
+                          if (mounted) {
+                            Navigator.of(dialogContext).pop();
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Consumed ${consumeQty.toInt()} from ${item.name}',
+                                ),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                          }
+                        } else {
+                          if (mounted) {
+                            ScaffoldMessenger.of(parentContext).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  inventoryService.lastError ??
+                                      'Failed to consume quantity',
+                                ),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Consume'),
+                    ),
+                  ],
+                ),
+          ),
     );
   }
 
@@ -1103,5 +1687,407 @@ class _InventoryPageState extends State<InventoryPage>
         }
       }
     }
+  }
+}
+
+/// Dialog widget to display transaction history (additions and consumptions)
+class _TransactionHistoryDialog extends StatefulWidget {
+  @override
+  State<_TransactionHistoryDialog> createState() =>
+      _TransactionHistoryDialogState();
+}
+
+class _TransactionHistoryDialogState extends State<_TransactionHistoryDialog>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  List<InventoryAddition> _additions = [];
+  List<InventoryConsumption> _consumptions = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _loading = true);
+    final service = InventoryService();
+    final additions = await service.fetchAdditions();
+    final consumptions = await service.fetchConsumptions();
+    if (mounted) {
+      setState(() {
+        _additions = additions;
+        _consumptions = consumptions;
+        _loading = false;
+      });
+    }
+  }
+
+  void _showDownloadOptions() {
+    showDialog(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.download, color: Colors.blue.shade700),
+                const SizedBox(width: 12),
+                const Text('Download History'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(Icons.add_circle, color: Colors.green.shade600),
+                  title: const Text('Download Additions'),
+                  subtitle: Text('${_additions.length} records'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportAdditions();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.remove_circle,
+                    color: Colors.orange.shade600,
+                  ),
+                  title: const Text('Download Consumptions'),
+                  subtitle: Text('${_consumptions.length} records'),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportConsumptions();
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Future<void> _exportAdditions() async {
+    if (_additions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No addition records to export!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final headers = ['Date', 'Item Name', 'Quantity'];
+    final rows =
+        _additions.map((a) {
+          return [
+            DateFormat('dd/MM/yyyy').format(a.additionDate),
+            a.itemName,
+            a.quantity.toStringAsFixed(0),
+          ];
+        }).toList();
+
+    await ExcelExportService.instance.exportToCsv(
+      headers: headers,
+      rows: rows,
+      fileName:
+          'inventory_additions_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Additions exported successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  Future<void> _exportConsumptions() async {
+    if (_consumptions.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No consumption records to export!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final headers = ['Date', 'Item Name', 'Quantity'];
+    final rows =
+        _consumptions.map((c) {
+          return [
+            DateFormat('dd/MM/yyyy').format(c.consumptionDate),
+            c.itemName,
+            c.quantity.toStringAsFixed(0),
+          ];
+        }).toList();
+
+    await ExcelExportService.instance.exportToCsv(
+      headers: headers,
+      rows: rows,
+      fileName:
+          'inventory_consumptions_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Consumptions exported successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.8,
+        padding: const EdgeInsets.all(0),
+        child: Column(
+          children: [
+            // Header
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade700, Colors.blue.shade500],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  const Icon(Icons.history, color: Colors.white),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text(
+                      'Transaction History',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: Colors.white),
+                    onPressed: _loadData,
+                    tooltip: 'Refresh',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.download, color: Colors.white),
+                    onPressed: _showDownloadOptions,
+                    tooltip: 'Download',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            // Tab Bar
+            Container(
+              color: Colors.grey.shade100,
+              child: TabBar(
+                controller: _tabController,
+                labelColor: Colors.blue.shade700,
+                unselectedLabelColor: Colors.grey,
+                indicatorColor: Colors.blue.shade700,
+                tabs: [
+                  Tab(
+                    icon: Icon(Icons.add_circle, color: Colors.green.shade600),
+                    text: 'Additions (${_additions.length})',
+                  ),
+                  Tab(
+                    icon: Icon(
+                      Icons.remove_circle,
+                      color: Colors.orange.shade600,
+                    ),
+                    text: 'Consumptions (${_consumptions.length})',
+                  ),
+                ],
+              ),
+            ),
+            // Content
+            Expanded(
+              child:
+                  _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildAdditionsTable(),
+                          _buildConsumptionsTable(),
+                        ],
+                      ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdditionsTable() {
+    if (_additions.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.add_circle_outline,
+              size: 64,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No addition records found',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: DataTable(
+            headingRowColor: WidgetStateProperty.all(Colors.green.shade50),
+            border: TableBorder.all(color: Colors.grey.shade300),
+            columns: const [
+              DataColumn(
+                label: Text(
+                  'Date',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              DataColumn(
+                label: Text(
+                  'Item',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              DataColumn(
+                label: Text(
+                  'Qty',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+            rows:
+                _additions.map((a) {
+                  return DataRow(
+                    cells: [
+                      DataCell(
+                        Text(DateFormat('dd/MM/yyyy').format(a.additionDate)),
+                      ),
+                      DataCell(Text(a.itemName)),
+                      DataCell(Text(a.quantity.toStringAsFixed(0))),
+                    ],
+                  );
+                }).toList(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConsumptionsTable() {
+    if (_consumptions.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.remove_circle_outline,
+              size: 64,
+              color: Colors.grey.shade300,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No consumption records found',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: DataTable(
+            headingRowColor: WidgetStateProperty.all(Colors.orange.shade50),
+            border: TableBorder.all(color: Colors.grey.shade300),
+            columns: const [
+              DataColumn(
+                label: Text(
+                  'Date',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              DataColumn(
+                label: Text(
+                  'Item',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              DataColumn(
+                label: Text(
+                  'Qty',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+            rows:
+                _consumptions.map((c) {
+                  return DataRow(
+                    cells: [
+                      DataCell(
+                        Text(
+                          DateFormat('dd/MM/yyyy').format(c.consumptionDate),
+                        ),
+                      ),
+                      DataCell(Text(c.itemName)),
+                      DataCell(Text(c.quantity.toStringAsFixed(0))),
+                    ],
+                  );
+                }).toList(),
+          ),
+        ),
+      ),
+    );
   }
 }

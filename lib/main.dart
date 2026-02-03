@@ -58,7 +58,7 @@ void main() async {
     if (!kIsWeb) {
       await Firebase.initializeApp();
       debugPrint('Firebase initialized successfully');
-      
+
       // Initialize FCM service
       await FCMService().initialize();
       debugPrint('FCM service initialized successfully');
@@ -92,7 +92,7 @@ class SCMApp extends StatelessWidget {
         '/admin/calculator': (_) => CalculatorPage(),
         '/admin/inventory': (_) => InventoryPage(),
         '/admin/reports': (_) => ReportsPage(),
-        '/admin/calendar': (_) => CalendarPage(),
+        '/admin/calendar': (_) => CalendarPage(initialRole: UserRole.admin),
         '/admin/history': (_) => HistoryPage(role: UserRole.admin),
         '/admin/lab-test': (_) => LabTestPage(),
         '/admin/cost-calendar': (_) => CostCalendarPage(),
@@ -102,7 +102,8 @@ class SCMApp extends StatelessWidget {
         '/production/dashboard': (_) => ProductionDashboard(),
         '/production/queue': (_) => ProductionQueuePage(),
         '/production/inventory': (_) => InventoryPage(),
-        '/production/calendar': (_) => CalendarPage(),
+        '/production/calendar':
+            (_) => CalendarPage(initialRole: UserRole.production),
         '/production/returned': (_) => ReturnedOrdersPage(),
         '/production/dispatch': (_) => DispatchPage(),
         '/production/loss': (_) => ProductionLossPage(),
@@ -113,7 +114,8 @@ class SCMApp extends StatelessWidget {
         '/accounts/orders': (_) => AccountsOrdersPage(),
         '/accounts/history': (_) => accounts_history.AccountsHistoryPage(),
         '/accounts/purchase': (_) => PurchasePage(),
-        '/accounts/calendar': (_) => AccountsCalendarPage(),
+        '/accounts/calendar':
+            (_) => CalendarPage(initialRole: UserRole.accounts),
         '/accounts/dispatch': (_) => DispatchTrackingPage(),
 
         // Lab Testing routes

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../widgets/wire_card.dart';
 import '../models/production_batch.dart';
@@ -57,13 +58,18 @@ class _ProductionPageState extends State<ProductionPage> {
 
         // Map database status to our app status
         String appStatus = 'queued';
-        double progress = 0.0;
+        // Load progress from database, default to 0.0 if not present
+        double progress = (batch['progress'] as num?)?.toDouble() ?? 0.0;
+
         if (batch['status'] == 'in_production') {
           appStatus = 'in_progress';
-          progress = 50.0;
+          // Keep the progress value from database
         } else if (batch['status'] == 'ready') {
           appStatus = 'completed';
-          progress = 100.0;
+          progress = 100.0; // Completed items are always 100%
+        } else if (batch['status'] == 'paused') {
+          appStatus = 'paused';
+          // Keep the progress value from database
         }
 
         final completed = batch['status'] == 'ready';
@@ -114,7 +120,11 @@ class _ProductionPageState extends State<ProductionPage> {
     }
   }
 
-  Future<void> _updateBatchStatus(String batchId, String newStatus, {double? progress}) async {
+  Future<void> _updateBatchStatus(
+    String batchId,
+    String newStatus, {
+    double? progress,
+  }) async {
     int index = productionBatches.indexWhere((batch) => batch.id == batchId);
     if (index == -1) return;
 
@@ -139,11 +149,12 @@ class _ProductionPageState extends State<ProductionPage> {
       _moveQueueItemToEnd(batch.inventoryId);
     }
 
-    final finalProgress = progress ?? (
-        newStatus == 'completed'
+    final finalProgress =
+        progress ??
+        (newStatus == 'completed'
             ? 100.0
             : newStatus == 'in_progress'
-            ? 50.0
+            ? 0.0
             : batch.progress);
 
     // Update in database
@@ -581,63 +592,74 @@ class _ProductionPageState extends State<ProductionPage> {
 
   void _showPauseDialog(ProductionQueue batch, ProductionQueueItem queueItem) {
     final TextEditingController unitsController = TextEditingController();
-    
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Pause Production'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Batch: ${batch.batchNumber}'),
-            Text('Product: ${queueItem.productName}'),
-            Text('Total Quantity: ${queueItem.quantity} units'),
-            SizedBox(height: 16),
-            TextField(
-              controller: unitsController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Total units processed so far',
-                border: OutlineInputBorder(),
-                hintText: 'e.g. 50',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final processed = double.tryParse(unitsController.text) ?? 0.0;
-              final total = queueItem.quantity.toDouble();
-              
-              if (total > 0) {
-                // Calculate progress based on units entered
-                final calculatedProgress = (processed / total * 100).clamp(0.0, 100.0);
-                
-                _updateBatchStatus(batch.id, 'paused', progress: calculatedProgress);
-                Navigator.pop(context);
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Production paused at ${calculatedProgress.toInt()}% (${processed.toInt()} units)'),
-                    backgroundColor: Colors.orange[700],
+      builder:
+          (context) => AlertDialog(
+            title: Text('Pause Production'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Batch: ${batch.batchNumber}'),
+                Text('Product: ${queueItem.productName}'),
+                Text('Total Quantity: ${queueItem.quantity} units'),
+                SizedBox(height: 16),
+                TextField(
+                  controller: unitsController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Total units processed so far',
+                    border: OutlineInputBorder(),
+                    hintText: 'e.g. 50',
                   ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange[700],
-              foregroundColor: Colors.white,
+                ),
+              ],
             ),
-            child: Text('Confirm Pause'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final processed =
+                      double.tryParse(unitsController.text) ?? 0.0;
+                  final total = queueItem.quantity.toDouble();
+
+                  if (total > 0) {
+                    // Calculate progress based on units entered
+                    final calculatedProgress = (processed / total * 100).clamp(
+                      0.0,
+                      100.0,
+                    );
+
+                    _updateBatchStatus(
+                      batch.id,
+                      'paused',
+                      progress: calculatedProgress,
+                    );
+                    Navigator.pop(context);
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Production paused at ${calculatedProgress.toInt()}% (${processed.toInt()} units)',
+                        ),
+                        backgroundColor: Colors.orange[700],
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange[700],
+                  foregroundColor: Colors.white,
+                ),
+                child: Text('Confirm Pause'),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
@@ -796,7 +818,9 @@ class _ProductionPageState extends State<ProductionPage> {
       } else {
         // Item does not exist - create new inventory item
         final inventoryItem = InventoryItem(
-          name: queueItem.productName.trim(), // Keep original case for display, just trim
+          name:
+              queueItem.productName
+                  .trim(), // Keep original case for display, just trim
           type: 'fresh', // Default status
           quantity: queueItem.quantity.toDouble(),
           category: 'Finished Goods',
@@ -874,6 +898,12 @@ class _ProductionPageState extends State<ProductionPage> {
             ? Icons.pause
             : Icons.schedule;
 
+    // Find the index of this item in the active queue for ReorderableDragStartListener
+    final activeQueue =
+        queueItems.where((qi) => !qi.completed && qi.queuePosition > 0).toList()
+          ..sort((a, b) => a.queuePosition.compareTo(b.queuePosition));
+    final itemIndex = activeQueue.indexWhere((qi) => qi.id == queueItem.id);
+
     return Container(
       key: key,
       margin: const EdgeInsets.only(bottom: 8),
@@ -891,6 +921,19 @@ class _ProductionPageState extends State<ProductionPage> {
             ),
             child: Row(
               children: [
+                // Drag handle for web - placed on the far left
+                if (kIsWeb && itemIndex >= 0)
+                  ReorderableDragStartListener(
+                    index: itemIndex,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Icon(
+                        Icons.drag_indicator,
+                        color: Colors.grey[400],
+                        size: 20,
+                      ),
+                    ),
+                  ),
                 CircleAvatar(
                   radius: 18,
                   backgroundColor: statusColor.withOpacity(0.12),
@@ -1111,7 +1154,11 @@ class _ProductionPageState extends State<ProductionPage> {
           children: const [
             Text(
               'Production Queue',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
@@ -1174,6 +1221,8 @@ class _ProductionPageState extends State<ProductionPage> {
                         return ReorderableListView(
                           shrinkWrap: true,
                           physics: NeverScrollableScrollPhysics(),
+                          buildDefaultDragHandles:
+                              !kIsWeb, // Use custom drag handles on web
                           onReorder: (oldIndex, newIndex) {
                             setState(() {
                               if (newIndex > oldIndex) {

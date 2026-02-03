@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/advance_payment.dart';
+import '../models/inventory_item.dart';
 import '../services/advance_payments_service.dart';
 import '../services/excel_export_service.dart';
+import '../services/supabase_service.dart';
 import 'package:intl/intl.dart';
 import '../models/order.dart';
 import '../models/order_item.dart';
@@ -27,9 +29,10 @@ class _OrdersPageState extends State<OrdersPage> {
   List<Order> orders = [];
   List<Order> filteredOrders = [];
   final TextEditingController _searchController = TextEditingController();
-  
+
   // Sort options
-  String _sortBy = 'date_desc'; // 'name_asc', 'name_desc', 'date_asc', 'date_desc'
+  String _sortBy =
+      'date_desc'; // 'name_asc', 'name_desc', 'date_asc', 'date_desc'
 
   final _formKey = GlobalKey<FormState>();
   final _clientNameController = TextEditingController();
@@ -48,10 +51,14 @@ class _OrdersPageState extends State<OrdersPage> {
   // Index of product being edited in the add-product row. Null when not editing.
   int? _editingProductIndex;
 
+  // Finished goods for autocomplete
+  List<InventoryItem> _finishedGoods = [];
+
   @override
   void initState() {
     super.initState();
     _loadOrders();
+    _loadFinishedGoods();
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -66,7 +73,9 @@ class _OrdersPageState extends State<OrdersPage> {
         int dateComp = dateB.compareTo(dateA);
         if (dateComp != 0) return dateComp;
 
-        return (a.clientName ?? '').toLowerCase().compareTo((b.clientName ?? '').toLowerCase());
+        return (a.clientName ?? '').toLowerCase().compareTo(
+          (b.clientName ?? '').toLowerCase(),
+        );
       });
       _advanceCache.clear();
       _shipmentMap.clear();
@@ -99,6 +108,26 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
+  Future<void> _loadFinishedGoods() async {
+    try {
+      final service = SupabaseService();
+      final items = await service.getInventoryItems();
+      // Filter for Finished Goods category only
+      if (items != null) {
+        _finishedGoods =
+            items
+                .where(
+                  (item) =>
+                      item.category.toLowerCase().trim() == 'finished goods',
+                )
+                .toList();
+      }
+    } catch (e) {
+      debugPrint('Error loading finished goods: $e');
+      _finishedGoods = [];
+    }
+  }
+
   /// Export all orders to Excel/CSV
   Future<void> _exportAllOrdersToExcel() async {
     try {
@@ -124,12 +153,16 @@ class _OrdersPageState extends State<OrdersPage> {
       final List<List<dynamic>> rows = [];
       for (final order in filteredOrders) {
         // Get order items for products list
-        final orderItems = await OrdersService.instance.getOrderItemsForOrder(order.id!);
-        final productsStr = orderItems.map((item) => '${item.productName} x ${item.quantity}').join(', ');
-        
+        final orderItems = await OrdersService.instance.getOrderItemsForOrder(
+          order.id!,
+        );
+        final productsStr = orderItems
+            .map((item) => '${item.productName} x ${item.quantity}')
+            .join(', ');
+
         // Get total installments paid
         final totalPaid = _advanceCache[order.id] ?? 0.0;
-        
+
         rows.add([
           order.orderNumber ?? '',
           order.clientName ?? '',
@@ -153,7 +186,8 @@ class _OrdersPageState extends State<OrdersPage> {
       await ExcelExportService.instance.exportToCsv(
         headers: headers,
         rows: rows,
-        fileName: 'orders_export_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+        fileName:
+            'orders_export_${DateFormat('yyyyMMdd').format(DateTime.now())}',
       );
 
       if (mounted) {
@@ -179,14 +213,14 @@ class _OrdersPageState extends State<OrdersPage> {
   /// Export a single order to Excel/CSV
   Future<void> _exportSingleOrderToExcel(Order order) async {
     try {
-      final orderItems = await OrdersService.instance.getOrderItemsForOrder(order.id!);
+      final orderItems = await OrdersService.instance.getOrderItemsForOrder(
+        order.id!,
+      );
       final totalPaid = _advanceCache[order.id] ?? 0.0;
-      final installments = await AdvancePaymentsService.instance.getPaymentsForOrder(order.id!);
+      final installments = await AdvancePaymentsService.instance
+          .getPaymentsForOrder(order.id!);
 
-      final headers = [
-        'Field',
-        'Value',
-      ];
+      final headers = ['Field', 'Value'];
 
       final rows = <List<dynamic>>[
         ['Order Number', order.orderNumber ?? ''],
@@ -196,7 +230,10 @@ class _OrdersPageState extends State<OrdersPage> {
         ['Dispatch Date', order.dispatchDate ?? ''],
         ['Total Amount', '₹${order.totalAmount.toStringAsFixed(2)}'],
         ['Total Paid', '₹${totalPaid.toStringAsFixed(2)}'],
-        ['Pending Amount', '₹${(order.totalAmount - totalPaid).toStringAsFixed(2)}'],
+        [
+          'Pending Amount',
+          '₹${(order.totalAmount - totalPaid).toStringAsFixed(2)}',
+        ],
         ['Order Status', order.orderStatus],
         ['Payment Status', order.paymentStatus],
         ['Production Status', order.productionStatus],
@@ -211,19 +248,23 @@ class _OrdersPageState extends State<OrdersPage> {
 
       rows.add(['', '']); // Empty row
       rows.add(['Installments', '']);
-      
+
       // Add installments
       for (final payment in installments) {
-        final dateStr = payment.paidAt.isNotEmpty
-            ? DateFormat('dd/MM/yyyy').format(DateTime.parse(payment.paidAt))
-            : '';
+        final dateStr =
+            payment.paidAt.isNotEmpty
+                ? DateFormat(
+                  'dd/MM/yyyy',
+                ).format(DateTime.parse(payment.paidAt))
+                : '';
         rows.add(['  $dateStr', '₹${payment.amount.toStringAsFixed(2)}']);
       }
 
       await ExcelExportService.instance.exportToCsv(
         headers: headers,
         rows: rows,
-        fileName: 'order_${order.orderNumber ?? order.id}_${DateFormat('yyyyMMdd').format(DateTime.now())}',
+        fileName:
+            'order_${order.orderNumber ?? order.id}_${DateFormat('yyyyMMdd').format(DateTime.now())}',
       );
 
       if (mounted) {
@@ -245,7 +286,6 @@ class _OrdersPageState extends State<OrdersPage> {
       }
     }
   }
-
 
   Future<void> _showAddOrderDialog() async {
     await showDialog<void>(
@@ -293,7 +333,6 @@ class _OrdersPageState extends State<OrdersPage> {
                                         color: Colors.blue[900],
                                       ),
                                     ),
-
                                   ],
                                 ),
                               ),
@@ -311,7 +350,11 @@ class _OrdersPageState extends State<OrdersPage> {
                             controller: _clientNameController,
                             label: 'Client Name',
                             icon: Icons.person,
-                            validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                            validator:
+                                (v) =>
+                                    (v == null || v.trim().isEmpty)
+                                        ? 'Required'
+                                        : null,
                           ),
                           const SizedBox(height: 20),
                           _buildSectionHeader('Products'),
@@ -355,7 +398,11 @@ class _OrdersPageState extends State<OrdersPage> {
             label: 'Total Amount',
             icon: Icons.attach_money,
             keyboardType: TextInputType.number,
-            validator: (v) => (v != null && v.isNotEmpty && double.tryParse(v) == null) ? 'Invalid' : null,
+            validator:
+                (v) =>
+                    (v != null && v.isNotEmpty && double.tryParse(v) == null)
+                        ? 'Invalid'
+                        : null,
           ),
           const SizedBox(height: 16),
           _buildModernTextField(
@@ -363,7 +410,11 @@ class _OrdersPageState extends State<OrdersPage> {
             label: 'After Dispatch Days',
             icon: Icons.schedule,
             keyboardType: TextInputType.number,
-            validator: (v) => (v != null && v.isNotEmpty && int.tryParse(v) == null) ? 'Invalid' : null,
+            validator:
+                (v) =>
+                    (v != null && v.isNotEmpty && int.tryParse(v) == null)
+                        ? 'Invalid'
+                        : null,
           ),
           const SizedBox(height: 16),
           _buildModernTextField(
@@ -378,7 +429,8 @@ class _OrdersPageState extends State<OrdersPage> {
                 lastDate: DateTime.now().add(const Duration(days: 365)),
               );
               if (picked != null) {
-                _finalDueDateController.text = picked.toIso8601String().split('T')[0];
+                _finalDueDateController.text =
+                    picked.toIso8601String().split('T')[0];
                 setDialogState(() {});
               }
             },
@@ -401,7 +453,11 @@ class _OrdersPageState extends State<OrdersPage> {
               label: 'Installment Amount',
               icon: Icons.payment,
               keyboardType: TextInputType.number,
-              validator: (v) => (v != null && v.isNotEmpty && double.tryParse(v) == null) ? 'Invalid' : null,
+              validator:
+                  (v) =>
+                      (v != null && v.isNotEmpty && double.tryParse(v) == null)
+                          ? 'Invalid'
+                          : null,
             ),
           ],
         ],
@@ -543,16 +599,30 @@ class _OrdersPageState extends State<OrdersPage> {
         finalDueDate: finalDue,
         finalPaymentDate: finalDue,
         totalAmount: totalAmount,
-        location: _locationController.text.trim().isEmpty ? null : _locationController.text.trim(),
+        location:
+            _locationController.text.trim().isEmpty
+                ? null
+                : _locationController.text.trim(),
       );
 
       // Create the order and the items in one call so we don't accidentally
       // create duplicate orders. OrdersService.addOrder will insert order_items
       // when `products` is provided.
-      await OrdersService.instance.addOrder(
+      final createdOrder = await OrdersService.instance.addOrder(
         newOrder,
         products: _currentProducts,
       );
+
+      // If there's an initial advance payment, record it in the advances table
+      if (advancePaid > 0 && createdOrder != null && createdOrder.id != null) {
+        final initialPayment = AdvancePayment(
+          orderId: createdOrder.id!,
+          amount: advancePaid,
+          paidAt: DateTime.now().toIso8601String(),
+          note: 'Initial advance payment',
+        );
+        await AdvancePaymentsService.instance.addPayment(initialPayment);
+      }
 
       if (!mounted) return;
 
@@ -600,7 +670,8 @@ class _OrdersPageState extends State<OrdersPage> {
 
             final shipment = _shipmentMap[o.id];
             final displayStatus = shipment?.status ?? o.orderStatus;
-            final displayLocation = (shipment != null &&
+            final displayLocation =
+                (shipment != null &&
                         shipment.location != null &&
                         shipment.location!.isNotEmpty)
                     ? shipment.location
@@ -613,7 +684,10 @@ class _OrdersPageState extends State<OrdersPage> {
                 children: [
                   Container(
                     margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
@@ -638,17 +712,25 @@ class _OrdersPageState extends State<OrdersPage> {
                             letterSpacing: 0.3,
                           ),
                         ),
-                        if (displayLocation != null && displayLocation.isNotEmpty)
+                        if (displayLocation != null &&
+                            displayLocation.isNotEmpty)
                           Padding(
                             padding: const EdgeInsets.only(top: 2),
                             child: Row(
                               children: [
-                                Icon(Icons.location_on, size: 12, color: Colors.grey.shade500),
+                                Icon(
+                                  Icons.location_on,
+                                  size: 12,
+                                  color: Colors.grey.shade500,
+                                ),
                                 const SizedBox(width: 4),
                                 Expanded(
                                   child: Text(
                                     displayLocation,
-                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -659,30 +741,44 @@ class _OrdersPageState extends State<OrdersPage> {
 
                         const SizedBox(height: 8),
                         if (items.isEmpty)
-                          Text('No products', style: TextStyle(fontSize: 12, color: Colors.grey[400]))
+                          Text(
+                            'No products',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[400],
+                            ),
+                          )
                         else
                           Wrap(
                             spacing: 12,
                             runSpacing: 6,
-                            children: items.map((i) {
-                              return SizedBox(
-                                width: 140,
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.trip_origin, size: 8, color: Colors.blue.shade200),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        '${i.productName} (x${i.quantity})',
-                                        style: TextStyle(fontSize: 11, color: Colors.blueGrey[700]),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
+                            children:
+                                items.map((i) {
+                                  return SizedBox(
+                                    width: 140,
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.trip_origin,
+                                          size: 8,
+                                          color: Colors.blue.shade200,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            '${i.productName} (x${i.quantity})',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.blueGrey[700],
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
+                                  );
+                                }).toList(),
                           ),
                         const SizedBox(height: 12),
                         Row(
@@ -703,7 +799,9 @@ class _OrdersPageState extends State<OrdersPage> {
                     child: SizedBox(
                       width: 24,
                       height: 24,
-                      child: CustomPaint(painter: _TrianglePainter(statusColor)),
+                      child: CustomPaint(
+                        painter: _TrianglePainter(statusColor),
+                      ),
                     ),
                   ),
                 ],
@@ -714,7 +812,6 @@ class _OrdersPageState extends State<OrdersPage> {
       },
     );
   }
-
 
   Future<void> _showOrderDetailsDialog(Order order) async {
     List<AdvancePayment> installments = await AdvancePaymentsService.instance
@@ -797,7 +894,7 @@ class _OrdersPageState extends State<OrdersPage> {
                           ),
                         ],
                       ),
-                      
+
                       // Show Approve button if order is pending approval
                       if (order.orderStatus == 'pending_approval') ...[
                         const SizedBox(height: 16),
@@ -814,7 +911,11 @@ class _OrdersPageState extends State<OrdersPage> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.info_outline, size: 20, color: Colors.orange.shade800),
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 20,
+                                    color: Colors.orange.shade800,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     'Review Required',
@@ -836,35 +937,51 @@ class _OrdersPageState extends State<OrdersPage> {
                                 child: ElevatedButton.icon(
                                   onPressed: () async {
                                     // Update status to new
-                                    final updated = order.copyWith(orderStatus: 'new');
-                                    final success = await OrdersService.instance.updateOrder(updated);
-                                    
+                                    final updated = order.copyWith(
+                                      orderStatus: 'new',
+                                    );
+                                    final success = await OrdersService.instance
+                                        .updateOrder(updated);
+
                                     if (mounted) {
                                       Navigator.pop(ctx3);
                                       if (success) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
                                           const SnackBar(
-                                            content: Text('Order approved successfully'),
+                                            content: Text(
+                                              'Order approved successfully',
+                                            ),
                                             backgroundColor: Colors.green,
                                           ),
                                         );
                                         _loadOrders();
                                       } else {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
                                           const SnackBar(
-                                            content: Text('Failed to approve order'),
+                                            content: Text(
+                                              'Failed to approve order',
+                                            ),
                                             backgroundColor: Colors.red,
                                           ),
                                         );
                                       }
                                     }
                                   },
-                                  icon: const Icon(Icons.check_circle, color: Colors.white),
+                                  icon: const Icon(
+                                    Icons.check_circle,
+                                    color: Colors.white,
+                                  ),
                                   label: const Text('Approve Order'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green.shade600,
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -886,7 +1003,11 @@ class _OrdersPageState extends State<OrdersPage> {
                             children: [
                               Row(
                                 children: [
-                                  Icon(Icons.check_circle_outline, size: 20, color: Colors.blue.shade800),
+                                  Icon(
+                                    Icons.check_circle_outline,
+                                    size: 20,
+                                    color: Colors.blue.shade800,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     'Order Approved',
@@ -908,13 +1029,18 @@ class _OrdersPageState extends State<OrdersPage> {
                                 child: OutlinedButton.icon(
                                   onPressed: () async {
                                     // Update status back to pending_approval
-                                    final updated = order.copyWith(orderStatus: 'pending_approval');
-                                    final success = await OrdersService.instance.updateOrder(updated);
-                                    
+                                    final updated = order.copyWith(
+                                      orderStatus: 'pending_approval',
+                                    );
+                                    final success = await OrdersService.instance
+                                        .updateOrder(updated);
+
                                     if (mounted) {
                                       Navigator.pop(ctx3);
                                       if (success) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
                                           const SnackBar(
                                             content: Text('Approval undone'),
                                             backgroundColor: Colors.orange,
@@ -922,9 +1048,13 @@ class _OrdersPageState extends State<OrdersPage> {
                                         );
                                         _loadOrders();
                                       } else {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
                                           const SnackBar(
-                                            content: Text('Failed to undo approval'),
+                                            content: Text(
+                                              'Failed to undo approval',
+                                            ),
                                             backgroundColor: Colors.red,
                                           ),
                                         );
@@ -935,8 +1065,12 @@ class _OrdersPageState extends State<OrdersPage> {
                                   label: const Text('Undo Approval'),
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.red.shade700,
-                                    side: BorderSide(color: Colors.red.shade300),
-                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    side: BorderSide(
+                                      color: Colors.red.shade300,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1183,207 +1317,368 @@ class _OrdersPageState extends State<OrdersPage> {
                       ),
                       const SizedBox(height: 12),
 
-                      Builder(builder: (context) {
-                        final totalPaid = installments.fold<double>(0, (sum, i) => sum + i.amount);
-                        final pending = order.totalAmount - totalPaid;
-                        Color statusColor = pending <= 1.0 ? Colors.green : (totalPaid > 0 ? Colors.orange : Colors.red);
-                        String statusText = pending <= 1.0 ? 'PAID' : (totalPaid > 0 ? 'PARTIALLY PAID' : 'UNPAID');
-                        
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildDetailRow('Total Amount', '₹${order.totalAmount.toStringAsFixed(2)}'),
-                            _buildDetailRow('Advance Paid', '₹${totalPaid.toStringAsFixed(2)}'),
-                            _buildDetailRow('Pending Amount', '₹${pending.toStringAsFixed(2)}', valueColor: pending > 1.0 ? Colors.red : Colors.green),
-                            _buildDetailRow('Payment Status', statusText, valueColor: statusColor),
-                            
-                            const SizedBox(height: 24),
-                            Text(
-                              'Installments',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                                color: Colors.blue[900],
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            
-                            // Timeline details included under Installments section as requested
-                            _buildDetailRow('Order Created', order.createdAt != null ? DateFormat('MMM dd, yyyy').format(order.createdAt!) : 'N/A'),
-                            _buildDetailRow('Last Updated', order.updatedAt != null ? DateFormat('MMM dd, yyyy').format(order.updatedAt!) : 'N/A'),
-                            _buildDetailRow('Expected Dispatch', _formatDateString(order.dueDate)),
-                            _buildDetailRow('Final Payment Due', _formatDateString(order.finalPaymentDate)),
-                            _buildDetailRow('Dispatch Date', order.dispatchDate ?? 'In Production'),
-                            
-                            const SizedBox(height: 16),
-                            if (installments.isEmpty)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                                child: Text('No installment records found.', style: TextStyle(color: Colors.grey[600], fontSize: 13, fontStyle: FontStyle.italic)),
-                              )
-                            else
-                              ...installments.map((inst) => Container(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade50,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey.shade100),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      DateFormat('MMM dd, yyyy').format(DateTime.parse(inst.paidAt)),
-                                      style: TextStyle(color: Colors.blueGrey[700], fontSize: 13),
-                                    ),
-                                    Text(
-                                      '₹${inst.amount.toStringAsFixed(2)}',
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                    ),
-                                  ],
-                                ),
-                              )),
+                      Builder(
+                        builder: (context) {
+                          final totalPaid = installments.fold<double>(
+                            0,
+                            (sum, i) => sum + i.amount,
+                          );
+                          final pending = order.totalAmount - totalPaid;
+                          Color statusColor =
+                              pending <= 1.0
+                                  ? Colors.green
+                                  : (totalPaid > 0
+                                      ? Colors.orange
+                                      : Colors.red);
+                          String statusText =
+                              pending <= 1.0
+                                  ? 'PAID'
+                                  : (totalPaid > 0
+                                      ? 'PARTIALLY PAID'
+                                      : 'UNPAID');
 
-                            const SizedBox(height: 16),
-                            // Add new installment inputs at the end of the section
-                            if (pending > 1.0)
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade50.withOpacity(0.5),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.blue.shade100),
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildDetailRow(
+                                'Total Amount',
+                                '₹${order.totalAmount.toStringAsFixed(2)}',
+                              ),
+                              _buildDetailRow(
+                                'Advance Paid',
+                                '₹${totalPaid.toStringAsFixed(2)}',
+                              ),
+                              _buildDetailRow(
+                                'Pending Amount',
+                                '₹${pending.toStringAsFixed(2)}',
+                                valueColor:
+                                    pending > 1.0 ? Colors.red : Colors.green,
+                              ),
+                              _buildDetailRow(
+                                'Payment Status',
+                                statusText,
+                                valueColor: statusColor,
+                              ),
+
+                              const SizedBox(height: 24),
+                              Text(
+                                'Installments',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Colors.blue[900],
                                 ),
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Add Installment',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.blue.shade800,
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Timeline details included under Installments section as requested
+                              _buildDetailRow(
+                                'Order Created',
+                                order.createdAt != null
+                                    ? DateFormat(
+                                      'MMM dd, yyyy',
+                                    ).format(order.createdAt!)
+                                    : 'N/A',
+                              ),
+                              _buildDetailRow(
+                                'Last Updated',
+                                order.updatedAt != null
+                                    ? DateFormat(
+                                      'MMM dd, yyyy',
+                                    ).format(order.updatedAt!)
+                                    : 'N/A',
+                              ),
+                              _buildDetailRow(
+                                'Expected Dispatch',
+                                _formatDateString(order.dueDate),
+                              ),
+                              _buildDetailRow(
+                                'Final Payment Due',
+                                _formatDateString(order.finalPaymentDate),
+                              ),
+                              _buildDetailRow(
+                                'Dispatch Date',
+                                order.dispatchDate ?? 'In Production',
+                              ),
+
+                              const SizedBox(height: 16),
+                              if (installments.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8.0,
+                                  ),
+                                  child: Text(
+                                    'No installment records found.',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 13,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                )
+                              else
+                                ...installments.map(
+                                  (inst) => Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: Colors.grey.shade100,
                                       ),
                                     ),
-                                    const SizedBox(height: 8),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
                                       children: [
-                                        TextField(
-                                          controller: amountCtrl,
-                                          decoration: InputDecoration(
-                                            hintText: 'Amount',
-                                            prefixIcon: const Icon(Icons.currency_rupee, size: 16),
-                                            filled: true,
-                                            fillColor: Colors.white,
-                                            isDense: true,
-                                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                                            border: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(8),
-                                              borderSide: BorderSide(color: Colors.blue.shade200),
-                                            ),
-                                            enabledBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(8),
-                                              borderSide: BorderSide(color: Colors.blue.shade100),
-                                            ),
-                                          ),
-                                          keyboardType: TextInputType.number,
-                                        ),
-                                        const SizedBox(height: 12),
-                                        GestureDetector(
-                                          onTap: () async {
-                                            final picked = await showDatePicker(
-                                              context: ctx3,
-                                              initialDate: DateTime.now(),
-                                              firstDate: DateTime(2020),
-                                              lastDate: DateTime(2100),
-                                            );
-                                            if (picked != null) {
-                                              selectedDate = picked;
-                                              setState(() {});
-                                            }
-                                          },
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
-                                            decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(8),
-                                              border: Border.all(color: Colors.blue.shade100),
-                                            ),
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                              children: [
-                                                Row(
-                                                  children: [
-                                                    Icon(Icons.calendar_today, size: 16, color: Colors.blue.shade600),
-                                                    const SizedBox(width: 8),
-                                                    Text(
-                                                      selectedDate == null
-                                                          ? 'Select Date'
-                                                          : DateFormat('MM/dd/yy').format(selectedDate!),
-                                                      style: TextStyle(
-                                                        fontSize: 13,
-                                                        color: selectedDate == null ? Colors.grey : Colors.grey.shade800,
-                                                        fontWeight: selectedDate == null ? FontWeight.normal : FontWeight.w600,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                Icon(Icons.arrow_drop_down, color: Colors.blue.shade300),
-                                              ],
-                                            ),
+                                        Text(
+                                          DateFormat(
+                                            'MMM dd, yyyy',
+                                          ).format(DateTime.parse(inst.paidAt)),
+                                          style: TextStyle(
+                                            color: Colors.blueGrey[700],
+                                            fontSize: 13,
                                           ),
                                         ),
-                                        const SizedBox(height: 12),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: ElevatedButton.icon(
-                                            onPressed: () async {
-                                              final amt = double.tryParse(amountCtrl.text);
-                                              if (amt != null && selectedDate != null) {
-                                                if (amt > pending + 1.0) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text('Installment exceeds pending amount!'),
-                                                      backgroundColor: Colors.red,
-                                                    ),
-                                                  );
-                                                  return;
-                                                }
-
-                                                final payment = AdvancePayment(
-                                                  orderId: order.id!,
-                                                  amount: amt,
-                                                  paidAt: DateFormat('yyyy-MM-dd').format(selectedDate!),
-                                                );
-                                                await AdvancePaymentsService.instance.addPayment(payment);
-                                                installments = await AdvancePaymentsService.instance.getPaymentsForOrder(order.id!);
-                                                amountCtrl.clear();
-                                                selectedDate = null;
-                                                setState(() {});
-                                                // also reload main list to update colors there
-                                                _loadOrders();
-                                              }
-                                            },
-                                            icon: const Icon(Icons.add, color: Colors.white),
-                                            label: const Text('Add Installment'),
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.blue.shade600,
-                                              foregroundColor: Colors.white,
-                                              padding: const EdgeInsets.symmetric(vertical: 12),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                            ),
+                                        Text(
+                                          '₹${inst.amount.toStringAsFixed(2)}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                          ],
-                        );
-                      }),
+
+                              const SizedBox(height: 16),
+                              // Add new installment inputs at the end of the section
+                              if (pending > 1.0)
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue.shade50.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.blue.shade100,
+                                    ),
+                                  ),
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Add Installment',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.blue.shade800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          TextField(
+                                            controller: amountCtrl,
+                                            decoration: InputDecoration(
+                                              hintText: 'Amount',
+                                              prefixIcon: const Icon(
+                                                Icons.currency_rupee,
+                                                size: 16,
+                                              ),
+                                              filled: true,
+                                              fillColor: Colors.white,
+                                              isDense: true,
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 14,
+                                                  ),
+                                              border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                borderSide: BorderSide(
+                                                  color: Colors.blue.shade200,
+                                                ),
+                                              ),
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                borderSide: BorderSide(
+                                                  color: Colors.blue.shade100,
+                                                ),
+                                              ),
+                                            ),
+                                            keyboardType: TextInputType.number,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          GestureDetector(
+                                            onTap: () async {
+                                              final picked =
+                                                  await showDatePicker(
+                                                    context: ctx3,
+                                                    initialDate: DateTime.now(),
+                                                    firstDate: DateTime(2020),
+                                                    lastDate: DateTime(2100),
+                                                  );
+                                              if (picked != null) {
+                                                selectedDate = picked;
+                                                setState(() {});
+                                              }
+                                            },
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 12,
+                                                    horizontal: 12,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                border: Border.all(
+                                                  color: Colors.blue.shade100,
+                                                ),
+                                              ),
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Icon(
+                                                        Icons.calendar_today,
+                                                        size: 16,
+                                                        color:
+                                                            Colors
+                                                                .blue
+                                                                .shade600,
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Text(
+                                                        selectedDate == null
+                                                            ? 'Select Date'
+                                                            : DateFormat(
+                                                              'MM/dd/yy',
+                                                            ).format(
+                                                              selectedDate!,
+                                                            ),
+                                                        style: TextStyle(
+                                                          fontSize: 13,
+                                                          color:
+                                                              selectedDate ==
+                                                                      null
+                                                                  ? Colors.grey
+                                                                  : Colors
+                                                                      .grey
+                                                                      .shade800,
+                                                          fontWeight:
+                                                              selectedDate ==
+                                                                      null
+                                                                  ? FontWeight
+                                                                      .normal
+                                                                  : FontWeight
+                                                                      .w600,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  Icon(
+                                                    Icons.arrow_drop_down,
+                                                    color: Colors.blue.shade300,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: ElevatedButton.icon(
+                                              onPressed: () async {
+                                                final amt = double.tryParse(
+                                                  amountCtrl.text,
+                                                );
+                                                if (amt != null &&
+                                                    selectedDate != null) {
+                                                  if (amt > pending + 1.0) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      const SnackBar(
+                                                        content: Text(
+                                                          'Installment exceeds pending amount!',
+                                                        ),
+                                                        backgroundColor:
+                                                            Colors.red,
+                                                      ),
+                                                    );
+                                                    return;
+                                                  }
+
+                                                  final payment =
+                                                      AdvancePayment(
+                                                        orderId: order.id!,
+                                                        amount: amt,
+                                                        paidAt: DateFormat(
+                                                          'yyyy-MM-dd',
+                                                        ).format(selectedDate!),
+                                                      );
+                                                  await AdvancePaymentsService
+                                                      .instance
+                                                      .addPayment(payment);
+                                                  installments =
+                                                      await AdvancePaymentsService
+                                                          .instance
+                                                          .getPaymentsForOrder(
+                                                            order.id!,
+                                                          );
+                                                  amountCtrl.clear();
+                                                  selectedDate = null;
+                                                  setState(() {});
+                                                  // also reload main list to update colors there
+                                                  _loadOrders();
+                                                }
+                                              },
+                                              icon: const Icon(
+                                                Icons.add,
+                                                color: Colors.white,
+                                              ),
+                                              label: const Text(
+                                                'Add Installment',
+                                              ),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor:
+                                                    Colors.blue.shade600,
+                                                foregroundColor: Colors.white,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      vertical: 12,
+                                                    ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
 
                       const SizedBox(height: 32),
                       Row(
@@ -1393,23 +1688,45 @@ class _OrdersPageState extends State<OrdersPage> {
                             onPressed: () async {
                               final confirmed = await showDialog<bool>(
                                 context: context,
-                                builder: (ctx) => AlertDialog(
-                                  title: const Text('Delete Order'),
-                                  content: const Text('Permanently remove this order?'),
-                                  actions: [
-                                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-                                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
-                                  ],
-                                ),
+                                builder:
+                                    (ctx) => AlertDialog(
+                                      title: const Text('Delete Order'),
+                                      content: const Text(
+                                        'Permanently remove this order?',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed:
+                                              () => Navigator.pop(ctx, false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        TextButton(
+                                          onPressed:
+                                              () => Navigator.pop(ctx, true),
+                                          child: const Text(
+                                            'Delete',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                               );
                               if (confirmed == true) {
-                                await OrdersService.instance.deleteOrder(order.id!);
+                                await OrdersService.instance.deleteOrder(
+                                  order.id!,
+                                );
                                 Navigator.pop(ctx3);
                                 _loadOrders();
                               }
                             },
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
-                            label: const Text('Delete Order', style: TextStyle(color: Colors.red)),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                            ),
+                            label: const Text(
+                              'Delete Order',
+                              style: TextStyle(color: Colors.red),
+                            ),
                           ),
                         ],
                       ),
@@ -1452,7 +1769,11 @@ class _OrdersPageState extends State<OrdersPage> {
           children: const [
             Text(
               'Orders',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
             const SizedBox(height: 4),
             Text(
@@ -1486,7 +1807,10 @@ class _OrdersPageState extends State<OrdersPage> {
                       controller: _searchController,
                       decoration: InputDecoration(
                         hintText: 'Search by client name...',
-                        prefixIcon: Icon(Icons.search, color: Colors.blue.shade600),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: Colors.blue.shade600,
+                        ),
                         filled: true,
                         fillColor: Colors.blue.shade50,
                         border: OutlineInputBorder(
@@ -1506,49 +1830,110 @@ class _OrdersPageState extends State<OrdersPage> {
                         _sortOrders();
                       });
                     },
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: 'name_asc',
-                        child: Row(
-                          children: [
-                            Icon(Icons.arrow_upward, size: 16, color: _sortBy == 'name_asc' ? Colors.blue : Colors.grey),
-                            const SizedBox(width: 8),
-                            Text('Name A-Z', style: TextStyle(fontWeight: _sortBy == 'name_asc' ? FontWeight.bold : FontWeight.normal)),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'name_desc',
-                        child: Row(
-                          children: [
-                            Icon(Icons.arrow_downward, size: 16, color: _sortBy == 'name_desc' ? Colors.blue : Colors.grey),
-                            const SizedBox(width: 8),
-                            Text('Name Z-A', style: TextStyle(fontWeight: _sortBy == 'name_desc' ? FontWeight.bold : FontWeight.normal)),
-                          ],
-                        ),
-                      ),
-                      const PopupMenuDivider(),
-                      PopupMenuItem(
-                        value: 'date_desc',
-                        child: Row(
-                          children: [
-                            Icon(Icons.arrow_downward, size: 16, color: _sortBy == 'date_desc' ? Colors.blue : Colors.grey),
-                            const SizedBox(width: 8),
-                            Text('Newest First', style: TextStyle(fontWeight: _sortBy == 'date_desc' ? FontWeight.bold : FontWeight.normal)),
-                          ],
-                        ),
-                      ),
-                      PopupMenuItem(
-                        value: 'date_asc',
-                        child: Row(
-                          children: [
-                            Icon(Icons.arrow_upward, size: 16, color: _sortBy == 'date_asc' ? Colors.blue : Colors.grey),
-                            const SizedBox(width: 8),
-                            Text('Oldest First', style: TextStyle(fontWeight: _sortBy == 'date_asc' ? FontWeight.bold : FontWeight.normal)),
-                          ],
-                        ),
-                      ),
-                    ],
+                    itemBuilder:
+                        (context) => [
+                          PopupMenuItem(
+                            value: 'name_asc',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.arrow_upward,
+                                  size: 16,
+                                  color:
+                                      _sortBy == 'name_asc'
+                                          ? Colors.blue
+                                          : Colors.grey,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Name A-Z',
+                                  style: TextStyle(
+                                    fontWeight:
+                                        _sortBy == 'name_asc'
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'name_desc',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.arrow_downward,
+                                  size: 16,
+                                  color:
+                                      _sortBy == 'name_desc'
+                                          ? Colors.blue
+                                          : Colors.grey,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Name Z-A',
+                                  style: TextStyle(
+                                    fontWeight:
+                                        _sortBy == 'name_desc'
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuDivider(),
+                          PopupMenuItem(
+                            value: 'date_desc',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.arrow_downward,
+                                  size: 16,
+                                  color:
+                                      _sortBy == 'date_desc'
+                                          ? Colors.blue
+                                          : Colors.grey,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Newest First',
+                                  style: TextStyle(
+                                    fontWeight:
+                                        _sortBy == 'date_desc'
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'date_asc',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.arrow_upward,
+                                  size: 16,
+                                  color:
+                                      _sortBy == 'date_asc'
+                                          ? Colors.blue
+                                          : Colors.grey,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Oldest First',
+                                  style: TextStyle(
+                                    fontWeight:
+                                        _sortBy == 'date_asc'
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                   ),
                 ],
               ),
@@ -1658,10 +2043,18 @@ class _OrdersPageState extends State<OrdersPage> {
   void _sortOrders() {
     switch (_sortBy) {
       case 'name_asc':
-        filteredOrders.sort((a, b) => (a.clientName ?? '').toLowerCase().compareTo((b.clientName ?? '').toLowerCase()));
+        filteredOrders.sort(
+          (a, b) => (a.clientName ?? '').toLowerCase().compareTo(
+            (b.clientName ?? '').toLowerCase(),
+          ),
+        );
         break;
       case 'name_desc':
-        filteredOrders.sort((a, b) => (b.clientName ?? '').toLowerCase().compareTo((a.clientName ?? '').toLowerCase()));
+        filteredOrders.sort(
+          (a, b) => (b.clientName ?? '').toLowerCase().compareTo(
+            (a.clientName ?? '').toLowerCase(),
+          ),
+        );
         break;
       case 'date_asc':
         filteredOrders.sort((a, b) {
@@ -1736,126 +2129,209 @@ class _OrdersPageState extends State<OrdersPage> {
   }
 
   Widget _buildProductAdditionRow(StateSetter setDialogState) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Product input on its own row
-        _buildModernTextField(
-          controller: _productController,
-          label: 'Product Name',
-          icon: Icons.inventory_2,
-        ),
-        const SizedBox(height: 8),
-        // Quantity on the next line with the add/save button
-        Row(
+    return StatefulBuilder(
+      builder: (context, setLocalState) {
+        // Filter finished goods based on typed text
+        final query = _productController.text.toLowerCase().trim();
+        final goods = _finishedGoods ?? <InventoryItem>[];
+        final filteredGoods =
+            query.isEmpty
+                ? <InventoryItem>[]
+                : goods
+                    .where((item) => item.name.toLowerCase().contains(query))
+                    .take(5)
+                    .toList();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: _buildModernTextField(
-                controller: _quantityController,
-                label: 'Qty',
-                icon: Icons.numbers,
-                keyboardType: TextInputType.number,
-                fillColor: Colors.blue.shade50,
-                textColor: Colors.blueGrey[900],
-              ),
+            // Product input with autocomplete suggestions
+            _buildModernTextField(
+              controller: _productController,
+              label: 'Product Name',
+              icon: Icons.inventory_2,
             ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: () {
-                final prod = _productController.text.trim();
-                final qtyText = _quantityController.text.trim();
-                if (prod.isEmpty || qtyText.isEmpty) return;
-                final qty = int.tryParse(qtyText) ?? 0;
-                setDialogState(() {
-                  if (_editingProductIndex != null &&
-                      _editingProductIndex! >= 0 &&
-                      _editingProductIndex! < _currentProducts.length) {
-                    // Save edited product
-                    _currentProducts[_editingProductIndex!] = {
-                      'name': prod,
-                      'quantity': qty,
-                    };
-                    _editingProductIndex = null;
-                  } else {
-                    // Add new product
-                    _currentProducts.add({'name': prod, 'quantity': qty});
-                  }
-                  _productController.clear();
-                  _quantityController.clear();
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade600,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 14,
-                  horizontal: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: Icon(
-                _editingProductIndex != null ? Icons.save : Icons.add,
-                color: Colors.white,
-              ),
-            ),
-          ],
-        ),
-        if (_currentProducts.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          Column(
-            children:
-                _currentProducts
-                    .asMap()
-                    .entries
-                    .map(
-                      (e) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text('${e.value['name']}'),
-                        subtitle: Text('Qty: ${e.value['quantity']}'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: Icon(
-                                Icons.edit,
-                                color: Colors.blue.shade600,
-                              ),
-                              onPressed:
-                                  () => setDialogState(() {
-                                    // populate inputs and switch to edit mode
-                                    _productController.text =
-                                        e.value['name'] ?? '';
-                                    _quantityController.text =
-                                        (e.value['quantity'] ?? 0).toString();
-                                    _editingProductIndex = e.key;
-                                  }),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                Icons.delete,
-                                color: Colors.red.shade400,
-                              ),
-                              onPressed:
-                                  () => setDialogState(() {
-                                    // if deleting the item being edited, clear editors
-                                    if (_editingProductIndex != null &&
-                                        _editingProductIndex == e.key) {
-                                      _editingProductIndex = null;
-                                      _productController.clear();
-                                      _quantityController.clear();
-                                    }
-                                    _currentProducts.removeAt(e.key);
-                                  }),
-                            ),
-                          ],
-                        ),
+            // Listener for text changes
+            ValueListenableBuilder(
+              valueListenable: _productController,
+              builder: (context, value, _) {
+                final q = value.text.toLowerCase().trim();
+                final goodsList = _finishedGoods ?? <InventoryItem>[];
+                final suggestions =
+                    q.isEmpty
+                        ? <InventoryItem>[]
+                        : goodsList
+                            .where(
+                              (item) => item.name.toLowerCase().contains(q),
+                            )
+                            .take(5)
+                            .toList();
+
+                if (suggestions.isEmpty) return const SizedBox.shrink();
+
+                return Container(
+                  constraints: const BoxConstraints(maxHeight: 150),
+                  margin: const EdgeInsets.only(top: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
                       ),
-                    )
-                    .toList(),
-          ),
-        ],
-      ],
+                    ],
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: suggestions.length,
+                    itemBuilder: (context, index) {
+                      final item = suggestions[index];
+                      return ListTile(
+                        dense: true,
+                        title: Text(
+                          item.name,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        subtitle: Text(
+                          'Stock: ${item.quantity.toStringAsFixed(0)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        onTap: () {
+                          _productController.text = item.name;
+                          // Move cursor to end
+                          _productController
+                              .selection = TextSelection.fromPosition(
+                            TextPosition(offset: item.name.length),
+                          );
+                          setLocalState(() {});
+                        },
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            // Quantity on the next line with the add/save button
+            Row(
+              children: [
+                Expanded(
+                  child: _buildModernTextField(
+                    controller: _quantityController,
+                    label: 'Qty',
+                    icon: Icons.numbers,
+                    keyboardType: TextInputType.number,
+                    fillColor: Colors.blue.shade50,
+                    textColor: Colors.blueGrey[900],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    final prod = _productController.text.trim();
+                    final qtyText = _quantityController.text.trim();
+                    if (prod.isEmpty || qtyText.isEmpty) return;
+                    final qty = int.tryParse(qtyText) ?? 0;
+                    setDialogState(() {
+                      if (_editingProductIndex != null &&
+                          _editingProductIndex! >= 0 &&
+                          _editingProductIndex! < _currentProducts.length) {
+                        // Save edited product
+                        _currentProducts[_editingProductIndex!] = {
+                          'name': prod,
+                          'quantity': qty,
+                        };
+                        _editingProductIndex = null;
+                      } else {
+                        // Add new product
+                        _currentProducts.add({'name': prod, 'quantity': qty});
+                      }
+                      _productController.clear();
+                      _quantityController.clear();
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade600,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                      horizontal: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: Icon(
+                    _editingProductIndex != null ? Icons.save : Icons.add,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+            if (_currentProducts.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Column(
+                children:
+                    _currentProducts
+                        .asMap()
+                        .entries
+                        .map(
+                          (e) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text('${e.value['name']}'),
+                            subtitle: Text('Qty: ${e.value['quantity']}'),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.edit,
+                                    color: Colors.blue.shade600,
+                                  ),
+                                  onPressed:
+                                      () => setDialogState(() {
+                                        // populate inputs and switch to edit mode
+                                        _productController.text =
+                                            e.value['name'] ?? '';
+                                        _quantityController.text =
+                                            (e.value['quantity'] ?? 0)
+                                                .toString();
+                                        _editingProductIndex = e.key;
+                                      }),
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.delete,
+                                    color: Colors.red.shade400,
+                                  ),
+                                  onPressed:
+                                      () => setDialogState(() {
+                                        // if deleting the item being edited, clear editors
+                                        if (_editingProductIndex != null &&
+                                            _editingProductIndex == e.key) {
+                                          _editingProductIndex = null;
+                                          _productController.clear();
+                                          _quantityController.clear();
+                                        }
+                                        _currentProducts.removeAt(e.key);
+                                      }),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                        .toList(),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 
